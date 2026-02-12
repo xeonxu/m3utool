@@ -7,6 +7,9 @@ build:  ## Build binary
 		--eval '(asdf:make :m3utool)' \
 		--eval '(quit)'
 
+ros-build:  ## Build binary with ros
+	ros dump executable m3utool.ros -o m3utool
+
 clean:
 	rm -rf bin m3utool
 

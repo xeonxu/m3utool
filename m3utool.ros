@@ -1,0 +1,26 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#|
+exec ros -Q -- $0 "$@"
+|#
+(progn ;; Init forms
+  (ros:ensure-asdf)
+  ;; Note: Ensure the directory containing m3utool is in Roswell's search path.
+  ;; Or simply run the ros script from the current directory where the .asd file is located.
+  ;; You can also uncomment the line below to force adding the current directory:
+  (push (uiop:getcwd) asdf:*central-registry*)
+  #+quicklisp(ql:quickload '(:m3utool) :silent t)
+  )
+
+(defpackage :ros.script.m3utool.3888
+  (:use :cl))
+(in-package :ros.script.m3utool.3888)
+
+
+;; This main function is the entry point called by Roswell
+(defun main (&rest argv)
+  ;; To let clingon parse arguments, we can simply call the main function
+  ;; defined in our CLI package. Clingon handles system arguments automatically.
+  (m3u-cli:main argv))
+
+;;; vim: set ft=lisp lisp:
