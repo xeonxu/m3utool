@@ -1,0 +1,96 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"  # Trigger workflow only on version tags (e.g., v1.0.0)
+  workflow_dispatch: # Allow manual triggering from GitHub UI
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} (${{ matrix.arch }})
+    # Dynamically select the runner based on the matrix configuration
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # Prevent cancelling other jobs if one fails
+      matrix:
+        include:
+          # --- Linux x64 (Standard) ---
+          - os: ubuntu-latest
+            arch: x86_64
+            binary_name: m3utool
+            asset_name: m3utool-linux-amd64
+
+          # --- Linux ARM64 (Native) ---
+          # GitHub-hosted ARM runners (e.g., ubuntu-24.04-arm).
+          # Note: This usually requires a Public repository or a Team/Enterprise plan.
+          # If this runner is unavailable, you might need to use QEMU (slower).
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            binary_name: m3utool
+            asset_name: m3utool-linux-arm64
+
+          # --- Windows x64 ---
+          - os: windows-latest
+            arch: x86_64
+            binary_name: m3utool.exe
+            asset_name: m3utool-windows-amd64.exe
+
+          # --- macOS ARM64 (Apple Silicon) ---
+          # 'macos-latest' runs on Apple Silicon (ARM64) by default now.
+          - os: macos-latest
+            arch: arm64
+            binary_name: m3utool
+            asset_name: m3utool-macos-arm64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Install Roswell & SBCL
+      # We use '40ants/setup-lisp' which supersedes 'setup-roswell'.
+      # It automatically detects the architecture (x86_64 vs arm64) and installs the correct SBCL binary.
+      - name: Install Roswell
+        uses: 40ants/setup-lisp@v4
+        with:
+          asdf-system: m3utool # Optionally pre-install dependencies for this system
+
+      # 2. Install Project Dependencies
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          # Register the current directory as a local project
+          ros install .
+          # Force load the system to ensure all dependencies are downloaded via Quicklisp
+          ros -e '(ql:quickload :m3utool)'
+
+      # 3. Build Binary
+      # Uses the logic defined in your m3utool.ros script
+      - name: Build Binary
+        shell: bash
+        run: |
+          # The output filename is dynamic based on the OS (e.g., .exe for Windows)
+          ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+
+      # 4. Prepare Artifacts
+      # Rename the binary to include the OS/Arch suffix for clarity in releases
+      - name: Rename Artifact
+        shell: bash
+        run: |
+          mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
+
+      # 5. Upload Build Artifacts
+      # Saves the binary so it can be downloaded from the workflow summary or attached to the release
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+      # 6. Create GitHub Release
+      # Only runs when a tag is pushed. Automatically attaches the built binaries.
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.asset_name }}
