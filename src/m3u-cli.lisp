@@ -47,6 +47,8 @@
     (unless input-file
       (clingon:print-usage-and-exit cmd t)
       (return-from to-xlsx-handler))
+    (when server
+      (setf strip 't))
 
     (format t "Converting M3U -> XLSX | Strip: ~a | Server: ~a~%" strip server)
     
@@ -68,6 +70,9 @@
     (unless input-file
       (clingon:print-usage-and-exit cmd t)
       (return-from to-m3u-handler))
+
+    (when server
+      (setf strip 't))
 
     (format t "Converting Excel -> M3U | Strip: ~a | Server: ~a~%" strip server)
     

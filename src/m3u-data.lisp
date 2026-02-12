@@ -93,7 +93,7 @@
       ;; Group 1: IP address, Group 2: Port number
       ;; Example: http://.../udp/233.18.1.1:5000 -> 233.18.1.1:5000
       (cl-ppcre:register-groups-bind (ip port)
-          ("(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}):(\\d+)$" result)
+          ("https?:\\/\\/.*\\/(?:udp\\/|rtp\\/)(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}):(\\d+)$" result)
         (setf result (format nil "~a:~a" ip port))))
 
     ;; 2. Handle server prefix appending
