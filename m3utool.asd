@@ -9,7 +9,6 @@
                "cl-excel"
                "alexandria"
                "str"
-               "py4cl2" 
                )
   :components ((:module "src"
                 :components

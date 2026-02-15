@@ -1,0 +1,8 @@
+("quicklisp" .
+ (:class qlot/source/dist:source-dist
+  :initargs (:distribution "https://beta.quicklisp.org/dist/quicklisp.txt" :%version :latest)
+  :version "2026-01-01"))
+("cl-excel" .
+ (:class qlot/source/git:source-git
+  :initargs (:remote-url "https://github.com/gwangjinkim/cl-excel")
+  :version "git-f4136abae279e6d0759c6f31995ea23617c732d2"))
