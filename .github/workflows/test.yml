@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Common Lisp Environment
+        uses: 40ants/setup-lisp@v4
+        env:
+          LISP: sbcl-bin
+        with:
+          asdf-system: m3utool
+          cache: true
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          qlot install
+
+      - name: Run Tests
+        shell: bash
+        run: |
+          qlot exec ros run \
+            --eval '(ql:quickload :m3utool/tests)' \
+            --eval '(asdf:test-system :m3utool)' \
+            --quit

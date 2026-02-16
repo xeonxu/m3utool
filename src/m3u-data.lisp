@@ -129,6 +129,32 @@
         ;; Write URI line
         (format stream "~a~%" (item-uri item))))))
 
+(defun flexible-csv-row-to-item (row headers)
+  "Convert a CSV row to a playlist-item object based on headers.
+   Expected format: Duration, Title, URI, [additional attributes...]"
+  (let ((item (make-instance 'playlist-item)))
+    ;; Process each cell in the row according to the headers
+    (loop for cell in row
+          for header in headers
+          for header-lower = (string-downcase (string-trim '(#\Space #\Tab) header))
+          do (cond
+               ;; Duration field
+               ((string= header-lower "duration")
+                (setf (item-duration item) 
+                      (parse-integer (format nil "~a" cell) :junk-allowed t)))
+               ;; Title field
+               ((string= header-lower "title")
+                (setf (item-title item) (format nil "~a" cell)))
+               ;; URI field
+               ((string= header-lower "uri")
+                (setf (item-uri item) (format nil "~a" cell)))
+               ;; All other fields become attributes
+               (t
+                (let ((cell-str (format nil "~a" cell)))
+                  (when (and cell-str (> (length cell-str) 0))
+                    (setf (gethash header-lower (item-attributes item)) cell-str))))))
+    item))
+
 (defun save-items-to-m3u (items output-path)
   "Write the object list to the final M3U file"
   (with-open-file (stream output-path 
