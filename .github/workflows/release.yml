@@ -71,7 +71,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          pacman -Syy --noconfirm || echo "Warning: pacman refresh had issues, continuing..."
+          pacman -Syy --noconfirm || echo "Warning: pacman refresh failed (exit code $?). This may cause package installation issues later."
 
       - name: Setup Common Lisp Environment
         uses: 40ants/setup-lisp@v4
