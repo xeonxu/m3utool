@@ -14,7 +14,8 @@
                 :components
                 ((:file "m3u-data")
                  (:file "m3u-xlsx")
-                 (:file "m3u-cli"))))
+                 (:file "m3u-cli")
+                 (:file "deploy-settings"))))
   :defsystem-depends-on (:deploy)
   :build-operation "deploy-op"
   :build-pathname "m3utool"
@@ -32,9 +33,3 @@
                 ((:file "main"))))
   :description "Test system for xlstool"
   :perform (asdf:test-op (op c) (symbol-call :rove :run c)))
-
-;; Tell ASDF to not update itself.
-(deploy:define-hook (:deploy asdf) (directory)
-  (declare (ignorable directory))
-  #+asdf (asdf:clear-source-registry)
-  #+asdf (defun asdf:upgrade-asdf () nil))
