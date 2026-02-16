@@ -60,10 +60,18 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            bash
             git
             make
             tar
             zstd
+
+      # Refresh pacman database to avoid "duplicated database entry" errors
+      - name: Refresh pacman database (Windows only)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          pacman -Syy --noconfirm || echo "Warning: pacman refresh failed (exit code $?). This may cause package installation issues later."
 
       - name: Setup Common Lisp Environment
         uses: 40ants/setup-lisp@v4
@@ -106,6 +114,33 @@ jobs:
         run: |
           # Use dynamic output filename based on the matrix configuration
           qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
+
+      # Sanity check: verify the binary was created
+      - name: Verify Build Output (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          if [ ! -f "${{ matrix.binary_name }}" ]; then
+            echo "ERROR: Build failed - ${{ matrix.binary_name }} not found!"
+            echo "Directory contents:"
+            ls -lah
+            exit 1
+          fi
+          echo "Build successful - ${{ matrix.binary_name }} exists"
+          ls -lh "${{ matrix.binary_name }}"
+
+      - name: Verify Build Output (non-Windows)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ ! -f "${{ matrix.binary_name }}" ]; then
+            echo "ERROR: Build failed - ${{ matrix.binary_name }} not found!"
+            echo "Directory contents:"
+            ls -lah
+            exit 1
+          fi
+          echo "Build successful - ${{ matrix.binary_name }} exists"
+          ls -lh "${{ matrix.binary_name }}"
 
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
@@ -154,4 +189,4 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.asset_name }}
+          files: dist/**/*
