@@ -51,9 +51,10 @@ jobs:
       # It detects the 'qlfile' in your repository and sets up the environment.
       - name: Setup Common Lisp Environment
         uses: 40ants/setup-lisp@v4
+        env:
+          LISP: sbcl-bin
         with:
           asdf-system: m3utool
-          qlfile-template: qlfile # Explicitly use the qlfile from repo
           cache: true             # Enable caching to speed up builds
 
       # 2. Install Dependencies
