@@ -5,6 +5,13 @@ exec ros -Q -- $0 "$@"
 |#
 (progn ;; Init forms
   (ros:ensure-asdf)
+  (let ((qlot-setup (merge-pathnames ".qlot/setup.lisp" (uiop:getcwd))))
+    (if (probe-file qlot-setup)
+        (progn
+          (format t "Using Qlot environment.~%")
+          (load qlot-setup))
+        ;; If don't find Qlot，print a warning and continue.
+        (format t "Qlot not found, using global Quicklisp.~%")))
   ;; Note: Ensure the directory containing m3utool is in Roswell's search path.
   ;; Or simply run the ros script from the current directory where the .asd file is located.
   ;; You can also uncomment the line below to force adding the current directory:
