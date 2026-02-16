@@ -3,13 +3,12 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*"  # Trigger workflow only on version tags (e.g., v1.0.0)
+      - "v*"  # Trigger workflow only on version tags (e.g., v0.1.0)
   workflow_dispatch: # Allow manual triggering from GitHub UI
 
 jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
-    # Dynamically select the runner based on the matrix configuration
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # Prevent cancelling other jobs if one fails
@@ -22,8 +21,8 @@ jobs:
             asset_name: m3utool-linux-amd64
 
           # --- Linux ARM64 (Native) ---
-          # GitHub-hosted ARM runners (e.g., ubuntu-24.04-arm).
-          # Note: This usually requires a Public repository or a Team/Enterprise plan.
+          # Uses GitHub-hosted ARM runners (e.g., ubuntu-24.04-arm).
+          # Note: This requires a Public repository or a Team/Enterprise plan.
           # If this runner is unavailable, you might need to use QEMU (slower).
           - os: ubuntu-24.04-arm
             arch: arm64
@@ -47,40 +46,44 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Install Roswell & SBCL
-      # We use '40ants/setup-lisp' which supersedes 'setup-roswell'.
-      # It automatically detects the architecture (x86_64 vs arm64) and installs the correct SBCL binary.
-      - name: Install Roswell
+      # 1. Setup Common Lisp Environment
+      # '40ants/setup-lisp' handles Roswell installation and Qlot caching automatically.
+      # It detects the 'qlfile' in your repository and sets up the environment.
+      - name: Setup Common Lisp Environment
         uses: 40ants/setup-lisp@v4
         with:
-          asdf-system: m3utool # Optionally pre-install dependencies for this system
+          asdf-system: m3utool
+          qlfile-template: qlfile # Explicitly use the qlfile from repo
+          cache: true             # Enable caching to speed up builds
 
-      # 2. Install Project Dependencies
+      # 2. Install Dependencies
+      # Although setup-lisp prepares Qlot, running install explicitly ensures
+      # all dependencies (including those from Git) are ready before the build.
       - name: Install Dependencies
         shell: bash
         run: |
-          # Register the current directory as a local project
-          ros install .
-          # Force load the system to ensure all dependencies are downloaded via Quicklisp
-          ros -e '(ql:quickload :m3utool)'
+          qlot install
 
       # 3. Build Binary
-      # Uses the logic defined in your m3utool.ros script
+      # We use 'qlot exec' to ensure the build runs inside the isolated environment
+      # defined in qlfile (e.g., using the specific cl-excel version).
+      # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
+      # library exclusion (compression-lib) to avoid path errors.
       - name: Build Binary
         shell: bash
         run: |
-          # The output filename is dynamic based on the OS (e.g., .exe for Windows)
-          ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+          # Use dynamic output filename based on the matrix configuration
+          qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
 
       # 4. Prepare Artifacts
-      # Rename the binary to include the OS/Arch suffix for clarity in releases
+      # Rename the generated binary to include the OS/Arch suffix for clarity.
       - name: Rename Artifact
         shell: bash
         run: |
           mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
 
       # 5. Upload Build Artifacts
-      # Saves the binary so it can be downloaded from the workflow summary or attached to the release
+      # Uploads the binary to the workflow run summary (useful for debugging).
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -88,8 +91,8 @@ jobs:
           path: ${{ matrix.asset_name }}
 
       # 6. Create GitHub Release
-      # Only runs when a tag is pushed. Automatically attaches the built binaries.
-      - name: Release
+      # Only runs when a tag is pushed. Automatically attaches the built binaries to the release.
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
