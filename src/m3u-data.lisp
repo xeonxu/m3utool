@@ -141,7 +141,7 @@
                ;; Duration field
                ((string= header-lower "duration")
                 (setf (item-duration item) 
-                      (parse-integer (format nil "~a" cell) :junk-allowed t)))
+                      (or (parse-integer (format nil "~a" cell) :junk-allowed t) -1)))
                ;; Title field
                ((string= header-lower "title")
                 (setf (item-title item) (format nil "~a" cell)))

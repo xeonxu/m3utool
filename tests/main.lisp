@@ -118,8 +118,9 @@ http://example.com/stream1
 #EXTINF:-1 tvg-id=\"2\" group-title=\"Test\",Another Channel
 http://example.com/stream2
 ")
-           (input-file "/tmp/test-input.m3u")
-           (output-file "/tmp/test-output.m3u"))
+           (temp-dir (uiop:temporary-directory))
+           (input-file (uiop:merge-pathnames* "test-input.m3u" temp-dir))
+           (output-file (uiop:merge-pathnames* "test-output.m3u" temp-dir)))
       ;; Create test input file
       (with-open-file (stream input-file 
                              :direction :output 
