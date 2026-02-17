@@ -1,27 +1,14 @@
-ROS_BIN := $(HOME)/.roswell/bin
+ROS_BIN := $(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
+RUN_CMD ?= qlot exec
 
 ifeq ($(OS),Windows_NT)
-    # Windows: use ros without qlot
-    RUN_CMD = 
-    ENV_INSTALL_CMD = @echo "Windows detected: Skipping qlot install. Please ensure dependencies are in local-projects."; \
-	rm -rf ~/.roswell/local-projects/cl-excel; \
-	git clone https://github.com/gwangjinkim/cl-excel ~/.roswell/local-projects/cl-excel; \
-	ros -e '(ql:register-local-projects)'
+    # qlot without parallel and symbol link functions which windows doesn't have.
+    QLOT_SRC=djhaskin987/qlot
 else
-    # Linux/macOS: use qlot environment
-    RUN_CMD = qlot exec
-    ENV_INSTALL_CMD = @if ! command -v qlot > /dev/null; then \
-		echo "Qlot not found. Installing..."; \
-		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
-		ros install fukamachi/qlot; \
-	else \
-		echo "Qlot is already installed."; \
-	fi; \
-	echo "Installing project dependencies..."; \
-	qlot install
+    QLOT_SRC=fukamachi/qlot
 endif
 
 .PHONY: install build ros-build clean help
@@ -50,9 +37,17 @@ install:
 		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
 	else \
 		echo "Roswell is already installed."; \
-	fi
-
-	$(ENV_INSTALL_CMD)
+	fi; \
+	if ! command -v qlot > /dev/null; then \
+		echo "Qlot not found. Installing..."; \
+		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
+		ros install $(QLOT_SRC); \
+		ros update quicklisp; \
+	else \
+		echo "Qlot is already installed."; \
+	fi; \
+	echo "Installing project dependencies..."; \
+	qlot install
 
 clean:
 	rm -rf m3utool m3utool.exe roswell .qlot/ bin/
