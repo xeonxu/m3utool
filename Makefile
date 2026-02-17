@@ -11,7 +11,7 @@ else
     QLOT_SRC=fukamachi/qlot
 endif
 
-.PHONY: install build ros-build clean help
+.PHONY: install build ros-build test clean help
 
 ## Build binary
 build: install
@@ -30,6 +30,14 @@ ifeq ($(OS),Windows_NT)
 else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
 endif
+
+## Run tests
+test: install
+	$(RUN_CMD) $(LISP) \
+		--load m3utool.asd \
+		--eval '(ql:quickload :m3utool/tests)' \
+		--eval '(asdf:test-system :m3utool)' \
+		--eval '(quit)'
 
 install:
 	@echo "Checking environment..."
