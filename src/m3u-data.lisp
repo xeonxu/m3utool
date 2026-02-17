@@ -159,7 +159,9 @@
 (defun flexible-csv-row-to-item (row headers)
   "Convert a row from CSV/XLSX to a playlist-item object.
    row: list of cell values
-   headers: list of column names (Duration, Title, URI, ...)"
+   headers: list of column names (Duration, Title, URI, ...)
+   
+   Note: Duration defaults to 0 if parsing fails (e.g., empty or non-numeric values)."
   (let ((item (make-instance 'playlist-item)))
     ;; Map headers to row values
     (loop for header in headers
