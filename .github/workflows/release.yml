@@ -35,11 +35,11 @@ jobs:
             binary_name: m3utool
             asset_name: m3utool-linux-arm64
 
-          # # --- Windows x64 ---
-          # - os: windows-latest
-          #   arch: x86_64
-          #   binary_name: m3utool.exe
-          #   asset_name: m3utool-windows-amd64.exe
+          # --- Windows x64 ---
+          - os: windows-latest
+            arch: x86_64
+            binary_name: m3utool.exe
+            asset_name: m3utool-windows-amd64.exe
 
           # --- macOS ARM64 (Apple Silicon) ---
           # 'macos-latest' runs on Apple Silicon (ARM64) by default now.
@@ -55,7 +55,9 @@ jobs:
       # 1. Setup Common Lisp Environment
       # '40ants/setup-lisp' handles Roswell installation and Qlot caching automatically.
       # It detects the 'qlfile' in your repository and sets up the environment.
-      - name: Setup Common Lisp Environment
+      # Unix: Continue using setup-lisp
+      - name: Setup Common Lisp Environment (Unix)
+        if: runner.os != 'Windows'
         uses: 40ants/setup-lisp@v4
         env:
           LISP: sbcl-bin
@@ -63,32 +65,42 @@ jobs:
           asdf-system: m3utool
           cache: true             # Enable caching to speed up builds
 
-      # 2. Install Dependencies
-      # Although setup-lisp prepares Qlot, running install explicitly ensures
-      # all dependencies (including those from Git) are ready before the build.
-      # --- Install dependencies ---
-      - name: Install Dependencies
-        run: |
-          qlot install
+      # Windows: Setup pure MSYS2 environment
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          # Install base tools required for Makefile and compilation
+          install: make git curl unzip mingw-w64-x86_64-gcc
 
-      # 3. Build Binary
+      # 2. Build Binary
       # We use 'qlot exec' to ensure the build runs inside the isolated environment
       # defined in qlfile (e.g., using the specific cl-excel version).
       # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
       # library exclusion (compression-lib) to avoid path errors.
-      - name: Build Binary
+      - name: Build Binary (Unix)
+        if: runner.os != 'Windows'
         run: |
           # Use dynamic output filename based on the matrix configuration
-          make ros-build
+          make build
+
+      - name: Build Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          # Use dynamic output filename based on the matrix configuration
+          make build
           find . -name "*m3utool*"
 
-      # 4. Prepare Artifacts
+      # 3. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
       - name: Rename Artifact
         run: |
           mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
-      # 5. Upload Build Artifacts
+      # 4. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -114,7 +126,7 @@ jobs:
           ls -lah dist || true
           find dist -type f -maxdepth 2 -print
 
-      # 6. Create GitHub Release
+      # 5. Create GitHub Release
       # Only runs when a tag is pushed. Automatically attaches the built binaries to the release.
       - name: Create Release
         uses: softprops/action-gh-release@v1

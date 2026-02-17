@@ -11,10 +11,10 @@ else
     QLOT_SRC=fukamachi/qlot
 endif
 
-.PHONY: install build ros-build clean help
+.PHONY: prepare build ros-build clean help
 
 ## Build binary
-build: install
+build: prepare
 	$(RUN_CMD) $(LISP) \
 		--load m3utool.asd \
 		--eval '(ql:quickload :deploy)' \
@@ -24,14 +24,14 @@ build: install
 		--eval '(quit)'
 
 ## Build binary with ros
-ros-build: install
+ros-build: prepare
 ifeq ($(OS),Windows_NT)
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
 else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
 endif
 
-install:
+prepare:
 	@echo "Checking environment..."
 	@if ! command -v ros > /dev/null; then \
 		echo "Roswell not found. Installing..."; \
