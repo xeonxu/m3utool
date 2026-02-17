@@ -13,6 +13,9 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: lispsh -eo pipefail {0}
     strategy:
       fail-fast: false # Prevent cancelling other jobs if one fails
       matrix:
