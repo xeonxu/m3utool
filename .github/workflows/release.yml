@@ -35,7 +35,7 @@ jobs:
           # --- Windows x64 ---
           - os: windows-latest
             arch: x86_64
-            binary_name: m3utool.exe
+            binary_name: m3utool
             asset_name: m3utool-windows-amd64.exe
 
           # --- macOS ARM64 (Apple Silicon) ---
@@ -81,7 +81,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          qlot install
+          make install
 
       - name: Install Dependencies (non-Windows)
         if: runner.os != 'Windows'
@@ -98,7 +98,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
+          make ros-build
 
       - name: Build Binary (non-Windows)
         if: runner.os != 'Windows'
