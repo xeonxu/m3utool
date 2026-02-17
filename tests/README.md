@@ -60,7 +60,7 @@ Tests run automatically via GitHub Actions on:
 
 ### Edge Cases
 - Empty attribute handling
-- Invalid duration values
+- Invalid duration values (tested with `test-invalid-duration-handling`)
 - Special characters (Chinese, symbols)
 
 ## Test Structure

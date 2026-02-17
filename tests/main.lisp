@@ -121,30 +121,31 @@ http://example.com/stream2
            (temp-dir (uiop:temporary-directory))
            (input-file (uiop:merge-pathnames* "test-input.m3u" temp-dir))
            (output-file (uiop:merge-pathnames* "test-output.m3u" temp-dir)))
-      ;; Create test input file
-      (with-open-file (stream input-file 
-                             :direction :output 
-                             :if-exists :supersede
-                             :external-format :utf-8)
-        (write-string test-m3u-content stream))
-      
-      ;; Parse and save
-      (let ((items (m3u-data::parse-m3u-file input-file)))
-        (ok (= 2 (length items)))
-        (m3u-data::save-items-to-m3u items output-file)
-        
-        ;; Verify output file was created
-        (ok (probe-file output-file))
-        
-        ;; Parse the output to verify it matches
-        (let ((output-items (m3u-data::parse-m3u-file output-file)))
-          (ok (= 2 (length output-items)))
-          (ok (string= "Test Channel" (m3u-data::item-title (first output-items))))
-          (ok (string= "http://example.com/stream1" (m3u-data::item-uri (first output-items))))))
-      
-      ;; Cleanup
-      (when (probe-file input-file) (delete-file input-file))
-      (when (probe-file output-file) (delete-file output-file)))))
+      (unwind-protect
+          (progn
+            ;; Create test input file
+            (with-open-file (stream input-file 
+                                   :direction :output 
+                                   :if-exists :supersede
+                                   :external-format :utf-8)
+              (write-string test-m3u-content stream))
+            
+            ;; Parse and save
+            (let ((items (m3u-data::parse-m3u-file input-file)))
+              (ok (= 2 (length items)))
+              (m3u-data::save-items-to-m3u items output-file)
+              
+              ;; Verify output file was created
+              (ok (probe-file output-file))
+              
+              ;; Parse the output to verify it matches
+              (let ((output-items (m3u-data::parse-m3u-file output-file)))
+                (ok (= 2 (length output-items)))
+                (ok (string= "Test Channel" (m3u-data::item-title (first output-items))))
+                (ok (string= "http://example.com/stream1" (m3u-data::item-uri (first output-items)))))))
+        ;; Cleanup
+        (when (probe-file input-file) (delete-file input-file))
+        (when (probe-file output-file) (delete-file output-file))))))
 
 ;;; Test Edge Cases
 (deftest test-empty-attributes
@@ -169,3 +170,22 @@ http://example.com/stream2
       (m3u-data::parse-extinf-line line item)
       (ok (string= "100" (gethash "tvg-id" (m3u-data::item-attributes item))))
       (ok (string= "Test" (gethash "group-title" (m3u-data::item-attributes item)))))))
+
+(deftest test-invalid-duration-handling
+  (testing "Invalid duration values should default to -1"
+    (let* ((headers '("Duration" "Title" "URI"))
+           (row-with-invalid '("abc" "Test" "http://test.com"))
+           (row-with-empty '("" "Test2" "http://test2.com"))
+           (item1 (m3u-data::flexible-csv-row-to-item row-with-invalid headers))
+           (item2 (m3u-data::flexible-csv-row-to-item row-with-empty headers)))
+      (ok (= -1 (m3u-data::item-duration item1)))
+      (ok (= -1 (m3u-data::item-duration item2))))))
+
+(deftest test-nil-cell-handling
+  (testing "NIL cells should not be stored as 'NIL' string attributes"
+    (let* ((headers '("Duration" "Title" "URI" "tvg-id" "group-title"))
+           (row '("-1" "Test" "http://test.com" "100" nil))
+           (item (m3u-data::flexible-csv-row-to-item row headers)))
+      (ok (string= "100" (gethash "tvg-id" (m3u-data::item-attributes item))))
+      ;; group-title should not exist or not be "NIL"
+      (ok (not (string= "NIL" (gethash "group-title" (m3u-data::item-attributes item) ""))))))))

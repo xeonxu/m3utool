@@ -150,8 +150,10 @@
                 (setf (item-uri item) (format nil "~a" cell)))
                ;; All other fields become attributes
                (t
-                (let ((cell-str (format nil "~a" cell)))
-                  (when (and cell-str (> (length cell-str) 0))
+                (let ((cell-str (and cell (format nil "~a" cell))))
+                  (when (and cell-str
+                             (> (length cell-str) 0)
+                             (not (string= cell-str "NIL")))
                     (setf (gethash header-lower (item-attributes item)) cell-str))))))
     item))
 
