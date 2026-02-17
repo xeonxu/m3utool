@@ -25,7 +25,11 @@ build: install
 
 ## Build binary with ros
 ros-build: install
+ifeq ($(OS),Windows_NT)
+	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
+else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
+endif
 
 install:
 	@echo "Checking environment..."

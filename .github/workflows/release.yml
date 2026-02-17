@@ -13,9 +13,6 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
-    defaults:
-        run:
-          shell: lispsh -eo pipefail {0}
     strategy:
       fail-fast: false # Prevent cancelling other jobs if one fails
       matrix:
@@ -38,7 +35,7 @@ jobs:
           # --- Windows x64 ---
           - os: windows-latest
             arch: x86_64
-            binary_name: m3utool
+            binary_name: m3utool.exe
             asset_name: m3utool-windows-amd64.exe
 
           # --- macOS ARM64 (Apple Silicon) ---
