@@ -167,7 +167,8 @@
           for i from 0
           do
             (let ((clean-value (if value (format nil "~a" value) ""))
-                  (clean-header (string-trim '(#\Space) (format nil "~a" header))))
+                  (clean-header (string-trim '(#\Space) 
+                                             (if header (format nil "~a" header) ""))))
               (cond
                 ;; Duration column
                 ((string-equal clean-header "Duration")
