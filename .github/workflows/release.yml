@@ -35,11 +35,11 @@ jobs:
             binary_name: m3utool
             asset_name: m3utool-linux-arm64
 
-          # # --- Windows x64 ---
-          # - os: windows-latest
-          #   arch: x86_64
-          #   binary_name: m3utool.exe
-          #   asset_name: m3utool-windows-amd64.exe
+          # --- Windows x64 ---
+          - os: windows-latest
+            arch: x86_64
+            binary_name: m3utool.exe
+            asset_name: m3utool-windows-amd64.exe
 
           # --- macOS ARM64 (Apple Silicon) ---
           # 'macos-latest' runs on Apple Silicon (ARM64) by default now.
