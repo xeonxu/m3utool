@@ -63,8 +63,17 @@ jobs:
       # 2. Install Dependencies
       # Although setup-lisp prepares Qlot, running install explicitly ensures
       # all dependencies (including those from Git) are ready before the build.
-      - name: Install Dependencies
+      # NOTE: On Windows, we use PowerShell instead of bash because Roswell
+      # works better with native Windows shell for qlot/ros commands.
+      - name: Install Dependencies (Unix)
+        if: runner.os != 'Windows'
         shell: bash
+        run: |
+          qlot install
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           qlot install
 
@@ -73,18 +82,36 @@ jobs:
       # defined in qlfile (e.g., using the specific cl-excel version).
       # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
       # library exclusion (compression-lib) to avoid path errors.
-      - name: Build Binary
+      # NOTE: On Windows, we use PowerShell because Roswell's 'ros' command
+      # requires native shell for proper path handling and subprocess management.
+      - name: Build Binary (Unix)
+        if: runner.os != 'Windows'
         shell: bash
+        run: |
+          # Use dynamic output filename based on the matrix configuration
+          qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+
+      - name: Build Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           # Use dynamic output filename based on the matrix configuration
           qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
 
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
-      - name: Rename Artifact
+      # NOTE: On Windows, PowerShell has different command syntax for file operations
+      - name: Rename Artifact (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
+
+      - name: Rename Artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Move-Item -Path "${{ matrix.binary_name }}" -Destination "${{ matrix.asset_name }}"
 
       # 5. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
