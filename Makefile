@@ -3,7 +3,7 @@ export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
 
-.PHONY: install build ros-build clean help
+.PHONY: install build ros-build win-build clean help
 
 ## Build binary
 build: install
@@ -18,6 +18,16 @@ build: install
 ## Build binary with ros
 ros-build: install
 	qlot exec ros dump executable m3utool.ros -o m3utool
+
+## Build binary for Windows using SBCL directly (no Roswell dependency)
+win-build: install
+	qlot exec sbcl --non-interactive \
+		--eval '(ql:quickload :deploy)' \
+		--eval '(deploy:define-library deploy::compression-lib :dont-deploy t)' \
+		--load m3utool.asd \
+		--eval '(ql:quickload :m3utool)' \
+		--eval '(asdf:make :m3utool)' \
+		--eval '(quit)'
 
 install:
 	@echo "Checking environment..."

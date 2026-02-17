@@ -73,18 +73,37 @@ jobs:
       # defined in qlfile (e.g., using the specific cl-excel version).
       # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
       # library exclusion (compression-lib) to avoid path errors.
+      # On Windows, we use SBCL directly to avoid Roswell/bash dependencies.
       - name: Build Binary
         shell: bash
         run: |
-          # Use dynamic output filename based on the matrix configuration
-          qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows: Use SBCL directly (avoids Roswell/bash dependency issues)
+            qlot exec sbcl --non-interactive \
+              --eval '(ql:quickload :deploy)' \
+              --eval '(deploy:define-library deploy::compression-lib :dont-deploy t)' \
+              --load m3utool.asd \
+              --eval '(ql:quickload :m3utool)' \
+              --eval '(asdf:make :m3utool)' \
+              --eval '(quit)'
+          else
+            # Linux/macOS: Use Roswell as before
+            qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+          fi
 
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
+      # On Windows with ASDF/deploy, the binary is created in bin/ directory.
       - name: Rename Artifact
         shell: bash
         run: |
-          mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows: ASDF/deploy creates binary in bin/ directory
+            mv bin/${{ matrix.binary_name }} ${{ matrix.asset_name }}
+          else
+            # Linux/macOS: Roswell creates binary in current directory
+            mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
+          fi
 
       # 5. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
