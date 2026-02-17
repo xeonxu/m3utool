@@ -171,7 +171,7 @@
               (cond
                 ;; Duration column
                 ((string-equal clean-header "Duration")
-                 (setf (item-duration item) (parse-integer clean-value :junk-allowed t)))
+                 (setf (item-duration item) (or (parse-integer clean-value :junk-allowed t) 0)))
                 ;; Title column
                 ((string-equal clean-header "Title")
                  (setf (item-title item) clean-value))

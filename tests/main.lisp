@@ -49,7 +49,7 @@
 ;;; Tests for m3u-xlsx:save-xlsx and load-xlsx
 (deftest test-save-and-load-xlsx
   (testing "save-xlsx and load-xlsx should preserve playlist items"
-    (let* ((test-file "/tmp/test-playlist.xlsx")
+    (let* ((test-file (format nil "~a/test-playlist.xlsx" (uiop:temporary-directory)))
            (item1 (make-instance 'm3u-data::playlist-item
                                  :duration 120
                                  :title "Test Channel 1"
@@ -91,7 +91,7 @@
 
 (deftest test-save-xlsx-with-uri-transformation
   (testing "save-xlsx with strip-proxy should transform URIs in output"
-    (let* ((test-file "/tmp/test-transform.xlsx")
+    (let* ((test-file (format nil "~a/test-transform.xlsx" (uiop:temporary-directory)))
            (item (make-instance 'm3u-data::playlist-item
                                 :duration 60
                                 :title "Test Channel"
@@ -112,9 +112,3 @@
       ;; Clean up
       (when (probe-file test-file)
         (delete-file test-file)))))
-
-(deftest test-load-xlsx-empty-file
-  (testing "load-xlsx should handle files gracefully"
-    ;; This test ensures the function doesn't crash on valid but minimal xlsx files
-    ;; We'll skip this if we can't create a proper minimal xlsx file
-    (ok t "Skipping empty file test - requires manual xlsx creation")))
