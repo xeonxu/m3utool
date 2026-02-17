@@ -99,6 +99,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
+          find .
 
       - name: Build Binary (non-Windows)
         if: runner.os != 'Windows'
