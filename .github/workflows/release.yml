@@ -98,14 +98,14 @@ jobs:
       - name: Build Binary (Windows)
         if: runner.os == 'Windows'
         run: |
-          qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
+          ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
           find .
 
       - name: Build Binary (non-Windows)
         if: runner.os != 'Windows'
         run: |
           # Use dynamic output filename based on the matrix configuration
-          qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
+          ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
 
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
