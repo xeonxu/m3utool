@@ -13,6 +13,9 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    defaults:
+        run:
+          shell: lispsh -eo pipefail {0}
     strategy:
       fail-fast: false # Prevent cancelling other jobs if one fails
       matrix:
@@ -53,17 +56,17 @@ jobs:
       # '40ants/setup-lisp' handles Roswell installation and Qlot caching automatically.
       # It detects the 'qlfile' in your repository and sets up the environment.
       # --- Windows: install a real MSYS2 environment and use its shell ---
-      - name: Setup MSYS2 (Windows only)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            git
-            make
-            tar
-            zstd
+      # - name: Setup MSYS2 (Windows only)
+      #   if: runner.os == 'Windows'
+      #   uses: msys2/setup-msys2@v2
+      #   with:
+      #     msystem: MINGW64
+      #     update: true
+      #     install: >-
+      #       git
+      #       make
+      #       tar
+      #       zstd
 
       - name: Setup Common Lisp Environment
         uses: 40ants/setup-lisp@v4
@@ -79,13 +82,11 @@ jobs:
       # --- Install dependencies ---
       - name: Install Dependencies (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
         run: |
-          make install
+          qlot install
 
       - name: Install Dependencies (non-Windows)
         if: runner.os != 'Windows'
-        shell: bash
         run: |
           qlot install
 
@@ -96,13 +97,11 @@ jobs:
       # library exclusion (compression-lib) to avoid path errors.
       - name: Build Binary (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
         run: |
-          make ros-build
+          qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
 
       - name: Build Binary (non-Windows)
         if: runner.os != 'Windows'
-        shell: bash
         run: |
           # Use dynamic output filename based on the matrix configuration
           qlot exec ros dump executable m3utool.ros -o "${{ matrix.binary_name }}"
@@ -111,13 +110,11 @@ jobs:
       # Rename the generated binary to include the OS/Arch suffix for clarity.
       - name: Rename Artifact (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
         run: |
           mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
       - name: Rename Artifact (non-Windows)
         if: runner.os != 'Windows'
-        shell: bash
         run: |
           mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
@@ -143,7 +140,6 @@ jobs:
           path: dist
 
       - name: List downloaded files
-        shell: bash
         run: |
           ls -lah dist || true
           find dist -type f -maxdepth 2 -print
