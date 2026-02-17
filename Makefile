@@ -20,6 +20,7 @@ ros-build: install
 	qlot exec ros dump executable m3utool.ros -o m3utool
 
 ## Build binary for Windows using SBCL directly (no Roswell dependency)
+## Note: This mirrors the Windows build in .github/workflows/release.yml
 win-build: install
 	qlot exec sbcl --non-interactive \
 		--eval '(ql:quickload :deploy)' \

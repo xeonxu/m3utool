@@ -99,9 +99,20 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             # Windows: ASDF/deploy creates binary in bin/ directory
+            if [ ! -f "bin/${{ matrix.binary_name }}" ]; then
+              echo "Error: Binary not found at bin/${{ matrix.binary_name }}"
+              echo "Contents of bin/ directory:"
+              ls -la bin/ || echo "bin/ directory does not exist"
+              exit 1
+            fi
             mv bin/${{ matrix.binary_name }} ${{ matrix.asset_name }}
           else
             # Linux/macOS: Roswell creates binary in current directory
+            if [ ! -f "${{ matrix.binary_name }}" ]; then
+              echo "Error: Binary not found at ${{ matrix.binary_name }}"
+              ls -la
+              exit 1
+            fi
             mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
           fi
 
