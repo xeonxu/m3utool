@@ -1,23 +1,35 @@
-ROS_BIN := $(HOME)/.roswell/bin
+ROS_BIN := $(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
+RUN_CMD ?= qlot exec
+
+ifeq ($(OS),Windows_NT)
+    # qlot without parallel and symbol link functions which windows doesn't have.
+    QLOT_SRC=djhaskin987/qlot
+else
+    QLOT_SRC=fukamachi/qlot
+endif
 
 .PHONY: install build ros-build clean help
 
 ## Build binary
 build: install
-	qlot exec $(LISP) \
+	$(RUN_CMD) $(LISP) \
+		--load m3utool.asd \
 		--eval '(ql:quickload :deploy)' \
 		--eval '(deploy:define-library deploy::compression-lib :dont-deploy t)' \
-		--load m3utool.asd \
 		--eval '(ql:quickload :m3utool)' \
 		--eval '(asdf:make :m3utool)' \
 		--eval '(quit)'
 
 ## Build binary with ros
 ros-build: install
-	qlot exec ros dump executable m3utool.ros -o m3utool
+ifeq ($(OS),Windows_NT)
+	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
+else
+	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
+endif
 
 install:
 	@echo "Checking environment..."
@@ -29,15 +41,16 @@ install:
 		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
 	else \
 		echo "Roswell is already installed."; \
-	fi
-	@if ! command -v qlot > /dev/null; then \
+	fi; \
+	if ! command -v qlot > /dev/null; then \
 		echo "Qlot not found. Installing..."; \
 		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
-		ros install fukamachi/qlot; \
+		ros install $(QLOT_SRC); \
+		ros update quicklisp; \
 	else \
 		echo "Qlot is already installed."; \
-	fi
-	@echo "Installing project dependencies..."
+	fi; \
+	echo "Installing project dependencies..."; \
 	qlot install
 
 clean:

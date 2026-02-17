@@ -13,6 +13,9 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: lispsh -eo pipefail {0}
     strategy:
       fail-fast: false # Prevent cancelling other jobs if one fails
       matrix:
@@ -63,8 +66,8 @@ jobs:
       # 2. Install Dependencies
       # Although setup-lisp prepares Qlot, running install explicitly ensures
       # all dependencies (including those from Git) are ready before the build.
+      # --- Install dependencies ---
       - name: Install Dependencies
-        shell: bash
         run: |
           qlot install
 
@@ -74,17 +77,16 @@ jobs:
       # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
       # library exclusion (compression-lib) to avoid path errors.
       - name: Build Binary
-        shell: bash
         run: |
           # Use dynamic output filename based on the matrix configuration
-          qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
+          make ros-build
+          find . -name "*m3utool*"
 
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
       - name: Rename Artifact
-        shell: bash
         run: |
-          mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
+          mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
       # 5. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
@@ -93,6 +95,24 @@ jobs:
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release (attach all assets)
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List downloaded files
+        run: |
+          ls -lah dist || true
+          find dist -type f -maxdepth 2 -print
 
       # 6. Create GitHub Release
       # Only runs when a tag is pushed. Automatically attaches the built binaries to the release.
