@@ -86,6 +86,6 @@ Example:
 
 ## Notes
 
-- Tests use `/tmp` directory for temporary files
+- Tests use cross-platform temporary directories via `uiop:temporary-directory`
 - All tests clean up after themselves
 - Tests are designed to be independent and can run in any order

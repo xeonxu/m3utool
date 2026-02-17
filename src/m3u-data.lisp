@@ -166,7 +166,7 @@
           for value in row
           for i from 0
           do
-            (let ((clean-value (format nil "~a" value))
+            (let ((clean-value (if value (format nil "~a" value) ""))
                   (clean-header (string-trim '(#\Space) (format nil "~a" header))))
               (cond
                 ;; Duration column
