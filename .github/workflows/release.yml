@@ -64,7 +64,16 @@ jobs:
       # Although setup-lisp prepares Qlot, running install explicitly ensures
       # all dependencies (including those from Git) are ready before the build.
       # --- Install dependencies ---
-      - name: Install Dependencies
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pacman -Sy --noconfirm
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm make mingw-w64-x86_64-roswell
+          make install
+
+      - name: Install Dependencies (non-Windows)
+        if: runner.os != 'Windows'
         run: |
           make install
 
