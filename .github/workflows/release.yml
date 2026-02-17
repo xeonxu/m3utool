@@ -49,6 +49,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Windows-specific: Setup MSYS2 environment for Roswell
+      # Roswell requires bash/msys2 to run properly on Windows.
+      # This step ensures bash is available in PATH before Roswell installation.
+      - name: Setup MSYS2 (Windows only)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-toolchain
+
       # 1. Setup Common Lisp Environment
       # '40ants/setup-lisp' handles Roswell installation and Qlot caching automatically.
       # It detects the 'qlfile' in your repository and sets up the environment.
@@ -64,7 +77,7 @@ jobs:
       # Although setup-lisp prepares Qlot, running install explicitly ensures
       # all dependencies (including those from Git) are ready before the build.
       - name: Install Dependencies
-        shell: bash
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         run: |
           qlot install
 
@@ -73,8 +86,9 @@ jobs:
       # defined in qlfile (e.g., using the specific cl-excel version).
       # IMPORTANT: Ensure your Makefile or ROS script handles the 'deploy'
       # library exclusion (compression-lib) to avoid path errors.
+      # On Windows, use msys2 shell to ensure bash is available for Roswell.
       - name: Build Binary
-        shell: bash
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         run: |
           # Use dynamic output filename based on the matrix configuration
           qlot exec ros dump executable m3utool.ros -o ${{ matrix.binary_name }}
@@ -82,7 +96,7 @@ jobs:
       # 4. Prepare Artifacts
       # Rename the generated binary to include the OS/Arch suffix for clarity.
       - name: Rename Artifact
-        shell: bash
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         run: |
           mv ${{ matrix.binary_name }} ${{ matrix.asset_name }}
 
