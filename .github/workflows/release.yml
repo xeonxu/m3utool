@@ -84,14 +84,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           # Use dynamic output filename based on the matrix configuration
-          make build
+          make ros-build
 
       - name: Build Binary (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           # Use dynamic output filename based on the matrix configuration
-          make build
+          make ros-build
           find . -name "*m3utool*"
 
       # 3. Prepare Artifacts
