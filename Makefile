@@ -1,4 +1,4 @@
-ROS_BIN := $(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
+ROS_BIN := C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
