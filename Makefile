@@ -13,8 +13,7 @@ endif
 
 .PHONY: prepare build ros-build clean help
 
-## Build binary
-build: prepare
+build: prepare ## Build binary
 	$(RUN_CMD) $(LISP) \
 		--load m3utool.asd \
 		--eval '(ql:quickload :deploy)' \
@@ -23,15 +22,14 @@ build: prepare
 		--eval '(asdf:make :m3utool)' \
 		--eval '(quit)'
 
-## Build binary with ros
-ros-build: prepare
+ros-build: prepare ## Build binary with ros
 ifeq ($(OS),Windows_NT)
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
 else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
 endif
 
-prepare:
+prepare: ## Prepare environment
 	@echo "Checking environment..."
 	@if ! command -v ros > /dev/null; then \
 		echo "Roswell not found. Installing..."; \
@@ -53,7 +51,7 @@ prepare:
 	echo "Installing project dependencies..."; \
 	qlot install
 
-clean:
+clean: ## Clean targets
 	rm -rf m3utool m3utool.exe roswell .qlot/ bin/
 
 help:  ## Display callable targets
