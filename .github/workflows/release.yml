@@ -85,6 +85,7 @@ jobs:
         run: |
           # Use dynamic output filename based on the matrix configuration
           make ros-build
+          mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
       - name: Build Binary (Windows)
         if: runner.os == 'Windows'
@@ -92,15 +93,9 @@ jobs:
         run: |
           # Use dynamic output filename based on the matrix configuration
           make ros-build
-          find . -name "*m3utool*"
-
-      # 3. Prepare Artifacts
-      # Rename the generated binary to include the OS/Arch suffix for clarity.
-      - name: Rename Artifact
-        run: |
           mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
 
-      # 4. Upload Build Artifacts
+      # 3. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -126,7 +121,7 @@ jobs:
           ls -lah dist || true
           find dist -type f -maxdepth 2 -print
 
-      # 5. Create GitHub Release
+      # 4. Create GitHub Release
       # Only runs when a tag is pushed. Automatically attaches the built binaries to the release.
       - name: Create Release
         uses: softprops/action-gh-release@v1

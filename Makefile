@@ -51,9 +51,6 @@ prepare:
 		echo "Qlot is already installed."; \
 	fi; \
 	echo "Installing project dependencies..."; \
-	ls -l C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
-	ls -l /C/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
-	which qlot; \
 	qlot install
 
 clean:
