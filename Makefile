@@ -11,9 +11,9 @@ else
     QLOT_SRC=fukamachi/qlot
 endif
 
-.PHONY: prepare build ros-build clean help
+.PHONY: prepare build ros-build test clean help
 
-build: prepare ## Build binary
+build: prepare test ## Build binary
 	$(RUN_CMD) $(LISP) \
 		--load m3utool.asd \
 		--eval '(ql:quickload :deploy)' \
@@ -22,12 +22,19 @@ build: prepare ## Build binary
 		--eval '(asdf:make :m3utool)' \
 		--eval '(quit)'
 
-ros-build: prepare ## Build binary with ros
+ros-build: prepare test ## Build binary with ros
 ifeq ($(OS),Windows_NT)
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
 else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
 endif
+
+test: prepare ## Run tests
+	$(RUN_CMD) $(LISP) \
+		--load m3utool.asd \
+		--eval '(ql:quickload :m3utool/tests)' \
+		--eval '(asdf:test-system :m3utool)' \
+		--eval '(quit)'
 
 prepare: ## Prepare environment
 	@echo "Checking environment..."

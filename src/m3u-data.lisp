@@ -155,3 +155,34 @@
                 (item-title item))
         ;; Write URI
         (format stream "~a~%" (item-uri item))))))
+
+(defun flexible-csv-row-to-item (row headers)
+  "Convert a row from CSV/XLSX to a playlist-item object.
+   row: list of cell values
+   headers: list of column names (Duration, Title, URI, ...)
+   
+   Note: Duration defaults to 0 if parsing fails (e.g., empty or non-numeric values)."
+  (let ((item (make-instance 'playlist-item)))
+    ;; Map headers to row values
+    (loop for header in headers
+          for value in row
+          for i from 0
+          do
+            (let ((clean-value (if value (format nil "~a" value) ""))
+                  (clean-header (string-trim '(#\Space) 
+                                             (if header (format nil "~a" header) ""))))
+              (cond
+                ;; Duration column
+                ((string-equal clean-header "Duration")
+                 (setf (item-duration item) (or (parse-integer clean-value :junk-allowed t) 0)))
+                ;; Title column
+                ((string-equal clean-header "Title")
+                 (setf (item-title item) clean-value))
+                ;; URI column
+                ((string-equal clean-header "URI")
+                 (setf (item-uri item) clean-value))
+                ;; Everything else is an attribute
+                ((> (length clean-header) 0)
+                 (setf (gethash (string-downcase clean-header) (item-attributes item))
+                       clean-value)))))
+    item))
