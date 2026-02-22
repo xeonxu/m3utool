@@ -1,4 +1,4 @@
-ROS_BIN := C:/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
+ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
@@ -53,8 +53,10 @@ prepare:
 	echo "Installing project dependencies..."; \
 ifeq ($(OS),Windows_NT)
 	ls -l C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
-	C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot install
-	qlot install
+	ls -l /C/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
+	which qlot; \
+	C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot install;\
+	qlot install \
 else
 	qlot install
 endif
