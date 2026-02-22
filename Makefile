@@ -51,9 +51,13 @@ prepare:
 		echo "Qlot is already installed."; \
 	fi; \
 	echo "Installing project dependencies..."; \
+ifeq ($(OS),Windows_NT)
 	ls -l C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
 	C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot install
 	qlot install
+else
+	qlot install
+endif
 
 clean:
 	rm -rf m3utool m3utool.exe roswell .qlot/ bin/
