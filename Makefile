@@ -1,4 +1,4 @@
-ROS_BIN := C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
+ROS_BIN := C:/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LISP ?= ros run
@@ -51,6 +51,8 @@ prepare:
 		echo "Qlot is already installed."; \
 	fi; \
 	echo "Installing project dependencies..."; \
+	ls -l C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot;\
+	C:/Users/$(USER)/.roswell/lisp/quicklisp/bin/qlot install
 	qlot install
 
 clean:
