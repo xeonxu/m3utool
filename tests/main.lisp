@@ -112,3 +112,36 @@
       ;; Clean up
       (when (probe-file test-file)
         (delete-file test-file)))))
+
+;; --- Append this to your existing tests/main.lisp ---
+
+;; Note: You might need to add m3u-check to your defpackage :use list at the top of the file.
+;; Example: (:use :cl :rove :m3u-data :m3u-check)
+
+(deftest test-m3u-check
+  (testing "Validating HTTP URL liveliness"
+    ;; We use httpbin.org for reliable HTTP response testing.
+    ;; Note: This requires an active internet connection to pass.
+    (let ((alive-url "https://httpbin.org/status/200")
+          (dead-url "https://httpbin.org/status/404")
+          (timeout 5))
+      (ok (eq t (m3u-check:check-uri-alive-p alive-url timeout)) "Should return T for 200 OK")
+      (ok (eq nil (m3u-check:check-uri-alive-p dead-url timeout)) "Should return NIL for 404 Not Found")))
+
+  (testing "Validating non-HTTP URL bypassing"
+    (let ((rtp-url "rtp://239.1.1.1:5000")
+          (timeout 3))
+      ;; Non-HTTP streams should be bypassed and assumed alive by default
+      (ok (eq t (m3u-check:check-uri-alive-p rtp-url timeout)) "Should return T for non-HTTP protocols")))
+
+  (testing "Concurrent filtering logic"
+    (let* ((item1 (make-instance 'm3u-data::playlist-item :uri "https://httpbin.org/status/200"))
+           (item2 (make-instance 'm3u-data::playlist-item :uri "https://httpbin.org/status/404"))
+           (item3 (make-instance 'm3u-data::playlist-item :uri "rtp://239.1.1.2:5000"))
+           (items (list item1 item2 item3))
+           ;; Spin up a 2-worker pool to test concurrency
+           (alive-items (m3u-check:filter-alive-items items :threads 2 :timeout 5)))
+      
+      (ok (= (length alive-items) 2) "Should filter out exactly one dead link")
+      (ok (string= (m3u-data::item-uri (first alive-items)) "https://httpbin.org/status/200") "First alive should be the 200 URL")
+      (ok (string= (m3u-data::item-uri (second alive-items)) "rtp://239.1.1.2:5000") "Second alive should be the bypassed RTP URL"))))

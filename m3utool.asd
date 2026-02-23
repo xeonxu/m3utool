@@ -5,17 +5,21 @@
   :license "GPLv3"
   :depends-on ("clingon"
                "cl-ppcre"
-               "cl-csv"
                "cl-excel"
                "alexandria"
                "str"
+               "dexador"
+               "lparallel"
+               "bordeaux-threads"
                )
   :components ((:module "src"
                 :components
                 ((:file "m3u-data")
                  (:file "m3u-xlsx")
+                 (:file "m3u-check")
+                 (:file "deploy-settings")
                  (:file "m3u-cli")
-                 (:file "deploy-settings"))))
+                 )))
   :defsystem-depends-on (:deploy)
   :build-operation "deploy-op"
   :build-pathname "m3utool"
