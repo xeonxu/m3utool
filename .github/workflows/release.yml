@@ -23,8 +23,7 @@ jobs:
           # --- Linux x64 (Standard) ---
           - os: ubuntu-latest
             arch: x86_64
-            binary_name: m3utool
-            asset_name: m3utool-linux-amd64
+            asset_name: m3utool-linux-amd64.zip
 
           # --- Linux ARM64 (Native) ---
           # Uses GitHub-hosted ARM runners (e.g., ubuntu-24.04-arm).
@@ -32,21 +31,18 @@ jobs:
           # If this runner is unavailable, you might need to use QEMU (slower).
           - os: ubuntu-24.04-arm
             arch: arm64
-            binary_name: m3utool
-            asset_name: m3utool-linux-arm64
+            asset_name: m3utool-linux-arm64.zip
 
           # --- Windows x64 ---
           - os: windows-latest
             arch: x86_64
-            binary_name: m3utool.exe
-            asset_name: m3utool-windows-amd64.exe
+            asset_name: m3utool-windows-amd64.zip
 
           # --- macOS ARM64 (Apple Silicon) ---
           # 'macos-latest' runs on Apple Silicon (ARM64) by default now.
           - os: macos-latest
             arch: arm64
-            binary_name: m3utool
-            asset_name: m3utool-macos-arm64
+            asset_name: m3utool-macos-arm64.zip
 
     steps:
       - name: Checkout Code
@@ -73,7 +69,7 @@ jobs:
           msystem: MINGW64
           update: true
           # Install base tools required for Makefile and compilation
-          install: make git curl unzip mingw-w64-x86_64-gcc
+          install: make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl
 
       # 2. Build Binary
       # We use 'qlot exec' to ensure the build runs inside the isolated environment
@@ -84,18 +80,34 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           # Use dynamic output filename based on the matrix configuration
-          make ros-build
-          mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
+          make build
 
       - name: Build Binary (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           # Use dynamic output filename based on the matrix configuration
-          make ros-build
-          mv "${{ matrix.binary_name }}" "${{ matrix.asset_name }}"
+          make build
 
-      # 3. Upload Build Artifacts
+      # ----------------------------------------------------------------
+      # 3. Packaging
+      # Deploy places the executable and ALL required DLLs/.so files
+      # into the 'bin/' directory. We MUST zip the entire directory.
+      # ----------------------------------------------------------------
+      - name: Package Artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd bin
+          zip -r ../${{ matrix.asset_name }} .
+
+      - name: Package Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cd bin
+          zip -r ../${{ matrix.asset_name }} .
+
+      # 4. Upload Build Artifacts
       # Uploads the binary to the workflow run summary (useful for debugging).
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -104,27 +116,10 @@ jobs:
           path: ${{ matrix.asset_name }}
           if-no-files-found: error
 
-  release:
-    name: Create GitHub Release (attach all assets)
-    runs-on: ubuntu-latest
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: List downloaded files
-        run: |
-          ls -lah dist || true
-          find dist -type f -maxdepth 2 -print
-
-      # 4. Create GitHub Release
+      # 5. Create GitHub Release
       # Only runs when a tag is pushed. Automatically attaches the built binaries to the release.
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/**/*
+          files: ${{ matrix.asset_name }}

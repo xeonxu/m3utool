@@ -42,6 +42,8 @@ prepare: ## Prepare environment
 		echo "Roswell not found. Installing..."; \
 		if [ -x "$$(command -v apt-get)" ]; then \
 			sudo apt-get update && sudo apt-get install -y curl make automake autoconf gcc bzip2 git; \
+		elif [ -x "$$(command -v pacman)" ]; then \
+			pacman -Sy --noconfirm make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl; \
 		fi; \
 		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
 	else \
