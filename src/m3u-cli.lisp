@@ -13,7 +13,7 @@
   (let ((p (pathname input-path)))
     (make-pathname :type new-ext :defaults p)))
 
-;; --- 1. Define convert options ---
+;; --- Define convert options ---
 (defun convert/options ()
   (list
    (clingon:make-option
@@ -34,79 +34,68 @@
     :long-name "strip-proxy"
     :key :strip-proxy)))
 
-;; --- 2. Update to-xlsx command ---
-(defun convert/to-xlsx-handler (cmd)
+;; --- Define convert command ---
+(defun convert/handler (cmd)
   (let* ((args (clingon:command-arguments cmd))
          (input-file (first args))
-         (output-file (or (clingon:getopt cmd :output)
-                          (namestring (default-output-path input-file "xlsx"))))
-         ;; Get arguments
          (server (clingon:getopt cmd :server))
          (strip  (clingon:getopt cmd :strip-proxy)))
 
-    (unless input-file
+    ;; Check if input file is provided
+    (when input-file
       (clingon:print-usage-and-exit cmd t)
-      (return-from convert/to-xlsx-handler))
+      (return-from convert/handler))
+
+    ;; Automatically enable strip if server URL is provided
     (when server
       (setf strip 't))
 
-    (format t "Converting M3U -> XLSX | Strip: ~a | Server: ~a~%" strip server)
+    ;; Extract file extension and determine conversion direction
+    (let* ((ext (string-downcase (pathname-type (pathname input-file))))
+           (is-m3u (or (string= ext "m3u") (string= ext "m3u8")))
+           (is-xlsx (or (string= ext "xlsx") (string= ext "xls")))
+           ;; Determine default output file based on input type
+           (output-file (or (clingon:getopt cmd :output)
+                            (namestring (default-output-path input-file (if is-m3u "xlsx" "m3u"))))))
 
-    (let ((items (m3u-data::parse-m3u-file input-file)))
-      ;; Pass to the xlsx writer
-      (m3u-xlsx:save-xlsx items output-file
-                                  :server-url server
-                                  :strip-proxy strip))))
+      (cond
+        ;; Branch A: M3U -> XLSX
+        (is-m3u
+         (format t "Converting M3U -> XLSX | Strip: ~a | Server: ~a~%" strip server)
+         (let ((items (m3u-data::parse-m3u-file input-file)))
+           (m3u-xlsx:save-xlsx items output-file
+                               :server-url server
+                               :strip-proxy strip)))
 
-;; --- 3. Update to-m3u command ---
-(defun convert/to-m3u-handler (cmd)
-  (let* ((args (clingon:command-arguments cmd))
-         (input-file (first args))
-         (output-file (or (clingon:getopt cmd :output)
-                          (namestring (default-output-path input-file "m3u"))))
-         (server (clingon:getopt cmd :server))
-         (strip  (clingon:getopt cmd :strip-proxy)))
+        ;; Branch B: XLSX -> M3U
+        (is-xlsx
+         (format t "Converting XLSX -> M3U | Strip: ~a | Server: ~a~%" strip server)
+         (let ((items (m3u-xlsx:load-xlsx input-file)))
+           ;; Transform URIs in memory before saving
+           (dolist (item items)
+             (setf (m3u-data::item-uri item)
+                   (m3u-data:transform-uri (m3u-data::item-uri item)
+                                           :strip-proxy strip
+                                           :server-url server)))
+           ;; Save the modified objects to M3U
+           (m3u-data::save-items-to-m3u items output-file)
+           (format t "M3U generation complete -> ~a~%" output-file)))
 
-    (unless input-file
-      (clingon:print-usage-and-exit cmd t)
-      (return-from convert/to-m3u-handler))
+        ;; Branch C: Unsupported format
+        (t
+         (format t "Error: Unsupported input file extension '.~a'. Only .m3u, .m3u8, and .xlsx are supported.~%" ext)
+         (clingon:exit 1))))))
 
-    (when server
-      (setf strip 't))
-
-    (format t "Converting Excel -> M3U | Strip: ~a | Server: ~a~%" strip server)
-
-    (let ((items (m3u-xlsx:load-xlsx input-file)))
-
-      ;; Key point: Before saving as M3U, iterate through the objects in memory and modify their URIs
-      (dolist (item items)
-        (setf (m3u-data::item-uri item)
-              (m3u-data:transform-uri (m3u-data::item-uri item)
-                                      :strip-proxy strip
-                                      :server-url server)))
-
-      ;; Save the modified objects
-      (m3u-data::save-items-to-m3u items output-file)
-      (format t "M3U save completed: ~a~%" output-file))))
-
-(defun convert/to-xlsx-command ()
+(defun convert/command ()
   (clingon:make-command
-   :name "to-xlsx"
-   :description "M3U -> Excel (Supports stripping proxies and replacing servers)"
+   :name "convert"
+   :description "Convert between M3U and XLSX (Auto-detected by file extension)"
    :usage "INPUT-FILE [-o OUT] [-s SERVER] [--strip-proxy]"
-   :options (convert/options) ;; Use common options
-   :handler #'convert/to-xlsx-handler))
+   :options (convert/options)
+   :handler #'convert/handler)
+  )
 
-(defun convert/to-m3u-command ()
-  (clingon:make-command
-   :name "to-m3u"
-   :description "Excel -> M3U (Supports stripping proxies and replacing servers)"
-   :usage "INPUT-FILE [-o OUT] [-s SERVER] [--strip-proxy]"
-   :options (convert/options) ;; Use common options
-   :handler #'convert/to-m3u-handler))
-
-;; --- Add these functions to your src/m3u-cli.lisp ---
-
+;; --- Define check option ---
 (defun check/options ()
   (list
    (clingon:make-option :string
@@ -130,13 +119,14 @@
                         :short-name #\w :long-name "workers"
                         :key :workers :initial-value 20)))
 
+;; --- Define check command ---
 (defun check/handler (cmd)
   (let ((input (clingon:getopt cmd :input))
         (url-str (clingon:getopt cmd :url))
         (output (clingon:getopt cmd :output))
         (timeout (clingon:getopt cmd :timeout))
         (workers (clingon:getopt cmd :workers)))
-    
+
     ;; 1. Mutual exclusion validation
     (when (and input url-str)
       (format t "Error: --input and --url are mutually exclusive. Please provide only one.~%")
@@ -144,7 +134,7 @@
     (unless (or input url-str)
       (format t "Error: You must provide either an input file (-i) or a URL list (-u).~%")
       (clingon:exit 1))
-    
+
     ;; 2. Parse or construct items
     (let ((items nil))
       (if input
@@ -159,13 +149,13 @@
                                           (setf (m3u-data::item-uri item) (string-trim " " u))
                                           (setf (m3u-data::item-title item) "Manual URL")
                                           item))))))
-      
+
       ;; 3. Execute concurrent check
       (let* ((total (length items))
              (alive-items (m3u-check:filter-alive-items items :threads workers :timeout timeout)))
         (format t "~%--- Check Complete ---~%")
         (format t "Total: ~d | Alive: ~d | Dead: ~d~%" total (length alive-items) (- total (length alive-items)))
-        
+
         ;; 4. Output results based on context
         (if output
             (progn
@@ -195,8 +185,7 @@
    :authors '("Zhiqiang Xu <xeonxu@gmail.com>")
    :license "GPLv3"
    :handler #'top-level/handler
-   :sub-commands (list (convert/to-xlsx-command)
-                       (convert/to-m3u-command)
+   :sub-commands (list (convert/command)
                        (check/command))))
 
 ;; New: Silent startup to suppress 'deploy' verbose logs
