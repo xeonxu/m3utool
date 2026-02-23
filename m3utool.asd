@@ -14,15 +14,14 @@
                "hunchentoot")
   :components ((:module "src"
                 :components
-                ((:file "m3u-data")
+                ((:file "deploy-settings")
+                 (:file "m3u-data")
                  (:file "m3u-xlsx")
                  (:file "m3u-check")
                  (:file "m3u-server")
-                 (:file "deploy-settings")
-                 (:file "m3u-cli")
-                 )))
+                 (:file "m3u-cli"))))
   :defsystem-depends-on (:deploy)
-  :build-operation "deploy-op"
+  :build-operation "deploy-console-op"
   :build-pathname "m3utool"
   :entry-point "m3u-cli:main"
   :description "CL implemented tool to convert xlsx files to m3u files."
@@ -37,4 +36,4 @@
                 :components
                 ((:file "main"))))
   :description "Test system for xlstool"
-  :perform (asdf:test-op (op c) (symbol-call :rove :run c)))
+  :perform (asdf:test-op (op c) (uiop:symbol-call :rove :run c)))

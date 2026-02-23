@@ -239,10 +239,6 @@
                        (check/command)
                        (server/command))))
 
-;; New: Silent startup to suppress 'deploy' verbose logs
-(when (find-package :deploy)
-  (setf (symbol-value (find-symbol "*STATUS-OUTPUT*" :deploy)) nil))
-
 (defun main (&optional arguments)
   (let ((app (top-level/command)))
     (clingon:run app arguments)))

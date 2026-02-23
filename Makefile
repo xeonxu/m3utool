@@ -15,12 +15,10 @@ endif
 
 build: prepare test ## Build binary
 	$(RUN_CMD) $(LISP) \
-		--load m3utool.asd \
-		--eval '(ql:quickload :deploy)' \
-		--eval '(deploy:define-library deploy::compression-lib :dont-deploy t)' \
-		--eval '(ql:quickload :m3utool)' \
-		--eval '(asdf:make :m3utool)' \
-		--eval '(quit)'
+            --load m3utool.asd \
+            --eval '(ql:quickload :m3utool)' \
+            --eval '(asdf:make :m3utool)' \
+            --eval '(quit)'
 
 ros-build: prepare test ## Build binary with ros
 ifeq ($(OS),Windows_NT)
