@@ -2,7 +2,7 @@
   :version "0.1"
   :author "Noe"
   :mailto "xeonxu@gmail.com"
-  :license "LLGPL"
+  :license "GPLv3"
   :depends-on ("clingon"
                "cl-ppcre"
                "cl-csv"
@@ -25,7 +25,7 @@
 
 (asdf:defsystem "m3utool/tests"
   :author "Noe"
-  :license "LLGPL"
+  :license "GPLv3"
   :depends-on ("m3utool"
                "rove")
   :components ((:module "tests"

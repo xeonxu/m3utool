@@ -115,7 +115,7 @@
    :version "0.1"
    :description "Common Lisp M3U Processing Swiss Army Knife"
    :authors '("Zhiqiang Xu <xeonxu@gmail.com>")
-   :license "GPL V3"
+   :license "GPLv3"
    :handler #'top-level/handler
    :sub-commands (list (to-xlsx-command)
                        (to-m3u-command))))
