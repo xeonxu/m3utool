@@ -1,6 +1,6 @@
 (asdf:defsystem "m3utool"
-  :version "0.1"
-  :author "Noe"
+  :version "0.2"
+  :author "Zhiqiang Xu"
   :mailto "xeonxu@gmail.com"
   :license "GPLv3"
   :depends-on ("clingon"
@@ -11,12 +11,13 @@
                "dexador"
                "lparallel"
                "bordeaux-threads"
-               )
+               "hunchentoot")
   :components ((:module "src"
                 :components
                 ((:file "m3u-data")
                  (:file "m3u-xlsx")
                  (:file "m3u-check")
+                 (:file "m3u-server")
                  (:file "deploy-settings")
                  (:file "m3u-cli")
                  )))
@@ -28,7 +29,7 @@
   :in-order-to ((asdf:test-op (asdf:test-op "m3utool/tests"))))
 
 (asdf:defsystem "m3utool/tests"
-  :author "Noe"
+  :author "Zhiqiang Xu"
   :license "GPLv3"
   :depends-on ("m3utool"
                "rove")

@@ -173,6 +173,56 @@
    :options (check/options)
    :handler #'check/handler))
 
+;; Define Server Options
+(defun server/options ()
+  (list
+   (clingon:make-option :string
+                        :description "Input XLSX file to serve"
+                        :short-name #\i :long-name "input"
+                        :key :input)
+   (clingon:make-option :string
+                        :description "Bind address (default: 0.0.0.0 for all interfaces)"
+                        :short-name #\b :long-name "bind"
+                        :key :bind :initial-value "0.0.0.0")
+   (clingon:make-option :integer
+                        :description "Port to listen on (default: 8080)"
+                        :short-name #\p :long-name "port"
+                        :key :port :initial-value 8080)
+   (clingon:make-option :string
+                        :description "Specify the new server address"
+                        :short-name #\s :long-name "server"
+                        :key :server)
+   (clingon:make-option :boolean/true
+                        :description "Strip the original proxy address"
+                        :long-name "strip-proxy"
+                        :key :strip-proxy)))
+
+;; Define Server Handler
+(defun server/handler (cmd)
+  (let ((input (clingon:getopt cmd :input))
+        (bind (clingon:getopt cmd :bind))
+        (port (clingon:getopt cmd :port))
+        (server (clingon:getopt cmd :server))
+        (strip (clingon:getopt cmd :strip-proxy)))
+
+    (unless input
+      (format t "Error: You must provide an input XLSX file using -i or --input.~%")
+      (clingon:exit 1))
+
+    (when server
+      (setf strip 't))
+
+    ;; Delegate to the m3u-server module
+    (m3u-server:start-server input bind port server strip)))
+
+;; Build the Command Object
+(defun server/command ()
+  (clingon:make-command
+   :name "server"
+   :description "Start an HTTP server to serve a dynamic M3U playlist from an XLSX file"
+   :options (server/options)
+   :handler #'server/handler))
+
 ;; --- Main definitions ---
 (defun top-level/handler (cmd)
   (clingon:print-usage-and-exit cmd t))
@@ -180,13 +230,14 @@
 (defun top-level/command ()
   (clingon:make-command
    :name "m3utool"
-   :version "0.1"
+   :version "0.2"
    :description "Common Lisp M3U Processing Swiss Army Knife"
    :authors '("Zhiqiang Xu <xeonxu@gmail.com>")
    :license "GPLv3"
    :handler #'top-level/handler
    :sub-commands (list (convert/command)
-                       (check/command))))
+                       (check/command)
+                       (server/command))))
 
 ;; New: Silent startup to suppress 'deploy' verbose logs
 (when (find-package :deploy)
