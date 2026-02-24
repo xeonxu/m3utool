@@ -27,6 +27,35 @@ else
 	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
 endif
 
+build-alpine: test-alpine prepare-alpine
+	@echo "Building pure musl binary via native SBCL..."
+	@sbcl --noinform --non-interactive \
+		--eval '(ql:quickload :deploy)' \
+		--load m3utool.asd \
+		--eval '(ql:quickload :m3utool)' \
+		--eval '(asdf:make :m3utool)' \
+		--eval '(quit)'
+
+prepare-alpine: ## Prepare environment for alpine
+	@if ! command -v sbcl > /dev/null; then \
+		apk add --no-cache sbcl bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip; \
+	        curl -O https://beta.quicklisp.org/quicklisp.lisp; \
+	        sbcl --noinform --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'; \
+	        echo '(load "~/quicklisp/setup.lisp")' > ~/.sbclrc; \
+	fi
+	@if [ ! -d "$(HOME)/quicklisp/local-projects/cl-excel" ]; then \
+		mkdir -p $(HOME)/quicklisp/local-projects; \
+		git clone https://github.com/gwangjinkim/cl-excel $(HOME)/quicklisp/local-projects/cl-excel; \
+	fi
+
+test-alpine: prepare-alpine ## Run tests under alpine
+	@sbcl --noinform --non-interactive \
+		--eval '(ql:quickload :deploy)' \
+		--load m3utool.asd \
+		--eval '(ql:quickload :m3utool/tests)' \
+		--eval '(asdf:test-system :m3utool)' \
+		--eval '(quit)'
+
 test: prepare ## Run tests
 	$(RUN_CMD) $(LISP) \
 		--load m3utool.asd \
@@ -34,7 +63,7 @@ test: prepare ## Run tests
 		--eval '(asdf:test-system :m3utool)' \
 		--eval '(quit)'
 
-prepare: ## Prepare environment
+prepare: ## Prepare environment for ubuntu, msys
 	@echo "Checking environment..."
 	@if ! command -v ros > /dev/null; then \
 		echo "Roswell not found. Installing..."; \

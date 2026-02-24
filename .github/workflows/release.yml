@@ -123,3 +123,36 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: ${{ matrix.asset_name }}
+
+# --- OpenWrt ---
+  build-openwrt:
+    name: Build for OpenWrt (Alpine musl/arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cross-compile in Alpine ARM64 Emulator
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64
+          distro: alpine_latest
+          githubToken: ${{ github.token }}
+          install: |
+            apk add --no-cache make
+          run: |
+            make build-alpine
+            cd bin
+            zip -r ../m3utool-openwrt-arm64.zip .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3utool-openwrt-arm64.zip
+          path: m3utool-openwrt-arm64.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: m3utool-openwrt-arm64.zip
