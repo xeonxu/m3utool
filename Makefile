@@ -1,8 +1,9 @@
 ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
-LISP ?= ros run
-RUN_CMD ?= qlot exec
+ROS_CMD ?= ros
+LISP ?= $(ROS_CMD) run
+CMD_PREFIX ?= qlot exec
 
 ifeq ($(OS),Windows_NT)
     # qlot without parallel and symbol link functions which windows doesn't have.
@@ -14,7 +15,7 @@ endif
 .PHONY: prepare build ros-build test clean help
 
 build: prepare test ## Build binary
-	$(RUN_CMD) $(LISP) \
+	$(CMD_PREFIX) $(LISP) \
             --load m3utool.asd \
             --eval '(ql:quickload :m3utool)' \
             --eval '(asdf:make :m3utool)' \
@@ -22,9 +23,9 @@ build: prepare test ## Build binary
 
 ros-build: prepare test ## Build binary with ros
 ifeq ($(OS),Windows_NT)
-	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool.exe
+	$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool.exe
 else
-	$(RUN_CMD) ros dump executable m3utool.ros -o m3utool
+	$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool
 endif
 
 build-alpine: test-alpine prepare-alpine
@@ -57,7 +58,7 @@ test-alpine: prepare-alpine ## Run tests under alpine
 		--eval '(quit)'
 
 test: prepare ## Run tests
-	$(RUN_CMD) $(LISP) \
+	$(CMD_PREFIX) $(LISP) \
 		--load m3utool.asd \
 		--eval '(ql:quickload :m3utool/tests)' \
 		--eval '(asdf:test-system :m3utool)' \
@@ -78,9 +79,9 @@ prepare: ## Prepare environment for ubuntu, msys
 	fi; \
 	if ! command -v qlot > /dev/null; then \
 		echo "Qlot not found. Installing..."; \
-		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
-		ros install $(QLOT_SRC); \
-		ros update quicklisp; \
+		$(ROS_CMD) -e '(ql:update-dist "quicklisp" :prompt nil)'; \
+		$(ROS_CMD) install $(QLOT_SRC); \
+		$(ROS_CMD) update quicklisp; \
 	else \
 		echo "Qlot is already installed."; \
 	fi; \
