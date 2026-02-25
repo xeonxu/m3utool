@@ -142,7 +142,7 @@ jobs:
             apk update
             apk add --no-cache make
           run: |
-            make build-alpine
+            make build
             cd bin
             zip -r ../m3utool-openwrt-arm64.zip .
 
@@ -170,7 +170,7 @@ jobs:
           run: |
               apk update
               apk add --no-cache make
-              make build-alpine
+              make build
               cd bin
               zip -r ../m3utool-openwrt-amd64.zip .
   

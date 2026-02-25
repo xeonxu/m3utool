@@ -1,4 +1,4 @@
-ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
+ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin:/root/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
 LIBC_TYPE := $(shell ldd --version 2>&1 | grep -i musl >/dev/null && echo musl || echo glibc)
@@ -35,35 +35,6 @@ else
 	@$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool
 endif
 
-build-alpine: test-alpine prepare-alpine
-	@echo "Building pure musl binary via native SBCL..."
-	@sbcl --noinform --non-interactive \
-		--eval '(ql:quickload :deploy)' \
-		--load m3utool.asd \
-		--eval '(ql:quickload :m3utool)' \
-		--eval '(asdf:make :m3utool)' \
-		--eval '(quit)'
-
-prepare-alpine: ## Prepare environment for alpine
-	@if ! command -v sbcl > /dev/null; then \
-		apk add --no-cache sbcl bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip; \
-	        curl -O https://beta.quicklisp.org/quicklisp.lisp; \
-	        sbcl --noinform --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'; \
-	        echo '(load "~/quicklisp/setup.lisp")' > ~/.sbclrc; \
-	fi
-	@if [ ! -d "$(HOME)/quicklisp/local-projects/cl-excel" ]; then \
-		mkdir -p $(HOME)/quicklisp/local-projects; \
-		git clone https://github.com/gwangjinkim/cl-excel $(HOME)/quicklisp/local-projects/cl-excel; \
-	fi
-
-test-alpine: prepare-alpine ## Run tests under alpine
-	@sbcl --noinform --non-interactive \
-		--eval '(ql:quickload :deploy)' \
-		--load m3utool.asd \
-		--eval '(ql:quickload :m3utool/tests)' \
-		--eval '(asdf:test-system :m3utool)' \
-		--eval '(quit)'
-
 test: prepare ## Run tests
 	@$(CMD_PREFIX) $(LISP) \
 		--load m3utool.asd \
@@ -71,6 +42,7 @@ test: prepare ## Run tests
 		--eval '(asdf:test-system :m3utool)' \
 		--eval '(quit)'
 
+# To build roswell from source under alpine, these packages are needed: automake autoconf. Meanwhile, it have to hack install-for-ci.sh to comment out the libcurl4-openssl-dev-lib line since there's no package named this, instead it should be openssl-dev on alpine.
 prepare: ## Prepare environment for ubuntu, msys
 	@echo "Checking environment..."
 	@if ! command -v ros > /dev/null; then \
@@ -80,13 +52,15 @@ prepare: ## Prepare environment for ubuntu, msys
 		elif [ -x "$$(command -v pacman)" ]; then \
 			pacman -Sy --noconfirm make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl; \
 		elif [ -x "$$(command -v apk)" ]; then \
-			apk update && apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl; \
+			apk update && apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl roswell; \
 		fi; \
-		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
+		if [ ! -x "$$(command -v apk)" ]; then \
+			curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
+		fi; \
 	else \
 		echo "Roswell is already installed."; \
 	fi;
-# Don't append '-L' parameter to 'ros' here even under alpine. Since we have init the ros it self firstly.
+# Don't append '-L' parameter to 'ros' here even under alpine, since we have to init the ros itself firstly.
 	@if ! command -v qlot > /dev/null; then \
 		echo "Qlot not found. Installing..."; \
 		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
