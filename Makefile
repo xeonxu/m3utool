@@ -1,7 +1,14 @@
 ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
-ROS_CMD ?= ros
+LIBC_TYPE := $(shell ldd --version 2>&1 | grep -i musl >/dev/null && echo musl || echo glibc)
+
+ifeq ($(LIBC_TYPE), musl)
+    ROS_CMD ?= ros -L sbcl/system
+else
+    ROS_CMD ?= ros
+endif
+
 LISP ?= $(ROS_CMD) run
 CMD_PREFIX ?= qlot exec
 
@@ -23,9 +30,9 @@ build: prepare test ## Build binary
 
 ros-build: prepare test ## Build binary with ros
 ifeq ($(OS),Windows_NT)
-	$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool.exe
+	@$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool.exe
 else
-	$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool
+	@$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool
 endif
 
 build-alpine: test-alpine prepare-alpine
@@ -58,7 +65,7 @@ test-alpine: prepare-alpine ## Run tests under alpine
 		--eval '(quit)'
 
 test: prepare ## Run tests
-	$(CMD_PREFIX) $(LISP) \
+	@$(CMD_PREFIX) $(LISP) \
 		--load m3utool.asd \
 		--eval '(ql:quickload :m3utool/tests)' \
 		--eval '(asdf:test-system :m3utool)' \
@@ -72,21 +79,25 @@ prepare: ## Prepare environment for ubuntu, msys
 			sudo apt-get update && sudo apt-get install -y curl make automake autoconf gcc bzip2 git; \
 		elif [ -x "$$(command -v pacman)" ]; then \
 			pacman -Sy --noconfirm make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl; \
+		elif [ -x "$$(command -v apk)" ]; then \
+			apk update; \
+			apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl; \
 		fi; \
 		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
 	else \
 		echo "Roswell is already installed."; \
-	fi; \
-	if ! command -v qlot > /dev/null; then \
+	fi;
+	@if ! command -v qlot > /dev/null; then \
 		echo "Qlot not found. Installing..."; \
 		$(ROS_CMD) -e '(ql:update-dist "quicklisp" :prompt nil)'; \
 		$(ROS_CMD) install $(QLOT_SRC); \
 		$(ROS_CMD) update quicklisp; \
 	else \
 		echo "Qlot is already installed."; \
-	fi; \
-	echo "Installing project dependencies..."; \
-	qlot install
+	fi;
+	@echo "Installing project dependencies...";
+	@qlot install
+
 
 clean: ## Clean targets
 	rm -rf m3utool m3utool.exe roswell .qlot/ bin/
