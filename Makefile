@@ -80,18 +80,18 @@ prepare: ## Prepare environment for ubuntu, msys
 		elif [ -x "$$(command -v pacman)" ]; then \
 			pacman -Sy --noconfirm make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl; \
 		elif [ -x "$$(command -v apk)" ]; then \
-			apk update; \
-			apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl; \
+			apk update && apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl; \
 		fi; \
 		curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
 	else \
 		echo "Roswell is already installed."; \
 	fi;
+# Don't append '-L' parameter to 'ros' here even under alpine. Since we have init the ros it self firstly.
 	@if ! command -v qlot > /dev/null; then \
 		echo "Qlot not found. Installing..."; \
-		$(ROS_CMD) -e '(ql:update-dist "quicklisp" :prompt nil)'; \
-		$(ROS_CMD) install $(QLOT_SRC); \
-		$(ROS_CMD) update quicklisp; \
+		ros -e '(ql:update-dist "quicklisp" :prompt nil)'; \
+		ros install $(QLOT_SRC); \
+		ros update quicklisp; \
 	else \
 		echo "Qlot is already installed."; \
 	fi;
