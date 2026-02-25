@@ -158,30 +158,30 @@ jobs:
         with:
           files: m3utool-openwrt-arm64.zip
 
-build-alpine-amd64:
-    name: Build for OpenWrt (Alpine musl/amd64)
-    runs-on: ubuntu-latest
-    container: alpine:latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Compile in Alpine
-        run: |
-            apk update
-            apk add --no-cache make
-            make build-alpine
-            cd bin
-            zip -r ../m3utool-openwrt-amd64.zip .
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: m3utool-openwrt-amd64.zip
-          path: m3utool-openwrt-amd64.zip
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: m3utool-openwrt-amd64.zip
+  build-alpine-amd64:
+      name: Build for OpenWrt (Alpine musl/amd64)
+      runs-on: ubuntu-latest
+      container: alpine:latest
+      steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+  
+        - name: Compile in Alpine
+          run: |
+              apk update
+              apk add --no-cache make
+              make build-alpine
+              cd bin
+              zip -r ../m3utool-openwrt-amd64.zip .
+  
+        - name: Upload Artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: m3utool-openwrt-amd64.zip
+            path: m3utool-openwrt-amd64.zip
+  
+        - name: Create Release
+          uses: softprops/action-gh-release@v1
+          if: startsWith(github.ref, 'refs/tags/')
+          with:
+            files: m3utool-openwrt-amd64.zip
