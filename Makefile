@@ -1,13 +1,7 @@
 ROS_BIN := /C/Users/$(USER)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/lisp/quicklisp/bin:$(HOME)/.roswell/bin:/root/.roswell/bin
 export PATH := $(ROS_BIN):$(PATH)
 
-LIBC_TYPE := $(shell ldd --version 2>&1 | grep -i musl >/dev/null && echo musl || echo glibc)
-
-ifeq ($(LIBC_TYPE), musl)
-    ROS_CMD ?= ros -L sbcl/system
-else
-    ROS_CMD ?= ros
-endif
+ROS_CMD ?= ros
 
 LISP ?= $(ROS_CMD) run
 CMD_PREFIX ?= qlot exec
@@ -52,7 +46,7 @@ prepare: ## Prepare environment for ubuntu, msys
 		elif [ -x "$$(command -v pacman)" ]; then \
 			pacman -Sy --noconfirm make git curl zip unzip mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl; \
 		elif [ -x "$$(command -v apk)" ]; then \
-			apk update && apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip gcompat sbcl roswell; \
+			apk update && apk add --no-cache bash curl git gcc musl-dev openssl-dev zlib-dev zstd-dev zip roswell; \
 		fi; \
 		if [ ! -x "$$(command -v apk)" ]; then \
 			curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh; \
