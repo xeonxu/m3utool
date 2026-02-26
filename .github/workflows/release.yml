@@ -23,7 +23,7 @@ jobs:
           # --- Linux x64 (Standard) ---
           - os: ubuntu-latest
             arch: x86_64
-            asset_name: m3utool-linux-amd64.zip
+            asset_name: m3utool-linux-x86_64.zip
 
           # --- Linux ARM64 (Native) ---
           # Uses GitHub-hosted ARM runners (e.g., ubuntu-24.04-arm).
@@ -36,7 +36,7 @@ jobs:
           # --- Windows x64 ---
           - os: windows-latest
             arch: x86_64
-            asset_name: m3utool-windows-amd64.zip
+            asset_name: m3utool-windows-x86_64.zip
 
           # --- macOS ARM64 (Apple Silicon) ---
           # 'macos-latest' runs on Apple Silicon (ARM64) by default now.
@@ -161,8 +161,8 @@ jobs:
         with:
           files: m3utool-openwrt-arm64.zip
 
-  build-alpine-amd64:
-    name: Build for OpenWrt (Alpine musl/amd64)
+  build-alpine-x86_64:
+    name: Build for OpenWrt (Alpine musl/x86_64)
     runs-on: ubuntu-latest
     container: alpine:latest
     steps:
@@ -176,16 +176,16 @@ jobs:
             make build
             cp sample.xlsx bin/
             cd bin
-            zip -r ../m3utool-openwrt-amd64.zip .
+            zip -r ../m3utool-openwrt-x86_64.zip .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m3utool-openwrt-amd64.zip
-          path: m3utool-openwrt-amd64.zip
+          name: m3utool-openwrt-x86_64.zip
+          path: m3utool-openwrt-x86_64.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: m3utool-openwrt-amd64.zip
+          files: m3utool-openwrt-x86_64.zip
