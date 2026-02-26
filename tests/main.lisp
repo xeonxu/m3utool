@@ -11,13 +11,13 @@
 
 (deftest test-transform-uri-strip-proxy-udp
   (testing "transform-uri with strip-proxy should extract IP:Port from udp URL"
-    (ok (string= "233.18.1.1:5000"
+    (ok (string= "udp://233.18.1.1:5000"
                  (m3u-data:transform-uri "http://proxy.example.com:8080/udp/233.18.1.1:5000"
                                          :strip-proxy t)))))
 
 (deftest test-transform-uri-strip-proxy-rtp
   (testing "transform-uri with strip-proxy should extract IP:Port from rtp URL"
-    (ok (string= "192.168.1.100:8000"
+    (ok (string= "rtp://192.168.1.100:8000"
                  (m3u-data:transform-uri "http://proxy.example.com:8080/rtp/192.168.1.100:8000"
                                          :strip-proxy t)))))
 

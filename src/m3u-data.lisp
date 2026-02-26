@@ -84,23 +84,46 @@
     (nreverse items)))
 
 (defun transform-uri (original-uri &key strip-proxy server-url)
-  "Core URI processing function: strips proxy first, then appends new server."
-  (let ((result original-uri))
-    
-    ;; 1. Handle stripping logic
-    (when strip-proxy
-      ;; Regex logic: Find the IP:Port pattern at the end of the string
-      ;; Group 1: IP address, Group 2: Port number
-      ;; Example: http://.../udp/233.18.1.1:5000 -> 233.18.1.1:5000
-      (cl-ppcre:register-groups-bind (ip port)
-          ("https?:\\/\\/.*\\/(?:udp\\/|rtp\\/)(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}):(\\d+)$" result)
-        (setf result (format nil "~a:~a" ip port))))
+  "Core URI processing function:
+   1. Extracts IP:PORT and protocol from HTTP proxies or raw RTP/UDP URIs.
+   2. Reconstructs the URI depending on whether a new server-url is provided."
+  (let ((result original-uri)
+        extracted-ip
+        extracted-port
+        extracted-proto)
 
-    ;; 2. Handle server prefix appending
-    (when (and server-url (> (length server-url) 0))
-      (setf result (concatenate 'string server-url result)))
-    
-    result))
+    ;; 1. Regex parsing: match both HTTP proxy format and raw RTP/UDP format simultaneously
+    ;; Group 1: Match protocol in HTTP proxy (udp|rtp)
+    ;; Group 2: Match protocol in raw multicast (udp|rtp)
+    ;; Group 3: IP address
+    ;; Group 4: Port number
+    (cl-ppcre:register-groups-bind (http-proto raw-proto ip port)
+        ("^(?:https?:\\/\\/.*\\/(udp|rtp)\\/|(udp|rtp):\\/\\/)(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}):(\\d+)$" result)
+      (setf extracted-proto (or http-proto raw-proto "rtp")) ;; Fallback to rtp if extraction fails
+      (setf extracted-ip ip)
+      (setf extracted-port port))
+
+    ;; 2. Determine transformation logic based on parameters
+    (cond
+      ;; Case A: Convert to unicast address (user provided server-url)
+      ;; Whether it's rtp://239... or http://old-proxy..., if extracted successfully,
+      ;; strip it and append it to the new server-url.
+      ((and server-url (> (length server-url) 0))
+       (if extracted-ip
+           (setf result (format nil "~a~a:~a" server-url extracted-ip extracted-port))
+           ;; If regex doesn't match (e.g., standard http://domain.com/1.m3u8), append directly
+           (setf result (concatenate 'string server-url original-uri))))
+
+      ;; Case B: Restore to multicast address (no server-url provided, but strip-proxy requested)
+      ;; Example: http://192.168.1.1:8080/rtp/239.1.1.1:5000 -> rtp://239.1.1.1:5000
+      (strip-proxy
+       (if extracted-ip
+           (setf result (format nil "~a://~a:~a" extracted-proto extracted-ip extracted-port))
+           ;; If not matched, keep the original URI
+           result))
+
+      ;; Case C: Do nothing
+      (t result))))
 
 (defun collect-all-attribute-keys (items)
   "Scan all items, collect all attribute names that have appeared"
