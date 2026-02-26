@@ -42,7 +42,7 @@
          (strip  (clingon:getopt cmd :strip-proxy)))
 
     ;; Check if input file is provided
-    (when input-file
+    (when (or (not input-file) (= (length input-file) 0))
       (clingon:print-usage-and-exit cmd t)
       (return-from convert/handler))
 
