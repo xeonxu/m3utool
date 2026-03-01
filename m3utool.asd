@@ -16,7 +16,9 @@
                "dexador"
                "lparallel"
                "bordeaux-threads"
-               "hunchentoot")
+               "hunchentoot"
+               "swank"
+               "slynk")
   :components ((:module "src"
                 :components
                         ((:file "version")

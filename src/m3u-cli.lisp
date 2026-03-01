@@ -223,22 +223,38 @@
    :options (server/options)
    :handler #'server/handler))
 
-;; --- Main definitions ---
+;; --- Define Top-Level Global Options ---
 (defun top-level/options ()
   (list
    (clingon:make-option :integer
-                        :description "Start Swank server on specified port for remote debugging"
-                        :long-name "swank-port"
-                        :key :swank-port)))
+                        :description "Start Swank server on specified port for remote debugging (SLIME)"
+                        :long-name "slime-port"
+                        :key :slime-port)
+   (clingon:make-option :integer
+                        :description "Start Slynk server on specified port for remote debugging (SLY)"
+                        :long-name "sly-port"
+                        :key :sly-port)))
 
+;; --- Define Pre-hook for Top-Level Command ---
 (defun top-level/pre-hook (cmd)
-  "Hook executed before any sub-command. Checks if Swank server should be started."
-  (let* ((toplevel-cmd (clingon:command-toplevel cmd))
-         (port (clingon:getopt toplevel-cmd :swank-port)))
-    (when port
-      (format t "[DEBUG] Starting Swank Server on port ~a...~%" port)
-      ;; Start the Swank server without blocking the main thread
-      (swank:create-server :port port :dont-close t))))
+  "Hook executed before any sub-command. Checks if Swank/Slynk server should be started."
+  (let ((slime-port (clingon:getopt cmd :slime-port))
+        (sly-port   (clingon:getopt cmd :sly-port)))
+
+    ;; Port collision check: prevent both from using the exact same port
+    (when (and slime-port sly-port (= slime-port sly-port))
+      (format t "Error: --slime-port and --sly-port cannot use the same port number (~a).~%" slime-port)
+      (clingon:exit 1))
+
+    ;; Start Swank (for SLIME) if specified
+    (when slime-port
+      (format t "[DEBUG] Starting Swank Server (for SLIME) on port ~a...~%" slime-port)
+      (swank:create-server :port slime-port :dont-close t))
+
+    ;; Start Slynk (for SLY) if specified
+    (when sly-port
+      (format t "[DEBUG] Starting Slynk Server (for SLY) on port ~a...~%" sly-port)
+      (slynk:create-server :port sly-port :dont-close t))))
 
 (defun top-level/handler (cmd)
   (clingon:print-usage-and-exit cmd t))
