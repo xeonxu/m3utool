@@ -6,6 +6,9 @@ ROS_CMD ?= ros
 LISP ?= $(ROS_CMD) run
 CMD_PREFIX ?= qlot exec
 
+# Retrieving the latest Git Tag as the version string. Appending '-dirty' at the end of the version string, if there is uncommit codes exist in workspace.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+
 ifeq ($(OS),Windows_NT)
     # qlot without parallel and symbol link functions which windows doesn't have.
     QLOT_SRC=djhaskin987/qlot
@@ -13,16 +16,16 @@ else
     QLOT_SRC=fukamachi/qlot
 endif
 
-.PHONY: prepare build ros-build test clean help
+.PHONY: prepare build ros-build test clean help version
 
-build: prepare test ## Build binary
+build: prepare test version ## Build binary
 	$(CMD_PREFIX) $(LISP) \
             --load m3utool.asd \
             --eval '(ql:quickload :m3utool)' \
             --eval '(asdf:make :m3utool)' \
             --eval '(quit)'
 
-ros-build: prepare test ## Build binary with ros
+ros-build: prepare test version ## Build binary with ros
 ifeq ($(OS),Windows_NT)
 	@$(CMD_PREFIX) $(ROS_CMD) dump executable m3utool.ros -o m3utool.exe
 else
@@ -72,3 +75,9 @@ clean: ## Clean targets
 
 help:  ## Display callable targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+# --- Target to generate the version.txt file ---
+version:
+	@echo "Generating version.txt with tag: $(VERSION)"
+	@echo "$(VERSION)" > version.txt
+	@touch src/version.lisp

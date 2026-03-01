@@ -1,5 +1,10 @@
 (asdf:defsystem "m3utool"
-  :version "0.2"
+  :version #.(with-open-file (stream (merge-pathnames "version.txt" *load-pathname*)
+                                     :direction :input
+                                     :if-does-not-exist nil)
+               (if stream
+                   (string-trim '(#\Space #\Tab #\Newline #\Return) (read-line stream))
+                   "latest"))
   :author "Zhiqiang Xu"
   :mailto "xeonxu@gmail.com"
   :license "GPLv3"
@@ -14,12 +19,13 @@
                "hunchentoot")
   :components ((:module "src"
                 :components
-                ((:file "deploy-settings")
-                 (:file "m3u-data")
-                 (:file "m3u-xlsx")
-                 (:file "m3u-check")
-                 (:file "m3u-server")
-                 (:file "m3u-cli"))))
+                        ((:file "version")
+                         (:file "deploy-settings")
+                         (:file "m3u-data")
+                         (:file "m3u-xlsx")
+                         (:file "m3u-check")
+                         (:file "m3u-server")
+                         (:file "m3u-cli"))))
   :defsystem-depends-on (:deploy)
   :build-operation "deploy-console-op"
   :build-pathname "m3utool"
@@ -34,6 +40,6 @@
                "rove")
   :components ((:module "tests"
                 :components
-                ((:file "main"))))
+                        ((:file "main"))))
   :description "Test system for xlstool"
   :perform (asdf:test-op (op c) (uiop:symbol-call :rove :run c)))

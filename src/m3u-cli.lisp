@@ -230,7 +230,7 @@
 (defun top-level/command ()
   (clingon:make-command
    :name "m3utool"
-   :version "0.2"
+   :version m3u-version:*version*
    :description "Common Lisp M3U Processing Swiss Army Knife"
    :authors '("Zhiqiang Xu <xeonxu@gmail.com>")
    :license "GPLv3"
