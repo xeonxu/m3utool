@@ -80,4 +80,3 @@ help:  ## Display callable targets
 version:
 	@echo "Generating version.txt with tag: $(VERSION)"
 	@echo "$(VERSION)" > version.txt
-	@touch src/version.lisp
