@@ -224,6 +224,22 @@
    :handler #'server/handler))
 
 ;; --- Main definitions ---
+(defun top-level/options ()
+  (list
+   (clingon:make-option :integer
+                        :description "Start Swank server on specified port for remote debugging"
+                        :long-name "swank-port"
+                        :key :swank-port)))
+
+(defun top-level/pre-hook (cmd)
+  "Hook executed before any sub-command. Checks if Swank server should be started."
+  (let* ((toplevel-cmd (clingon:command-toplevel cmd))
+         (port (clingon:getopt toplevel-cmd :swank-port)))
+    (when port
+      (format t "[DEBUG] Starting Swank Server on port ~a...~%" port)
+      ;; Start the Swank server without blocking the main thread
+      (swank:create-server :port port :dont-close t))))
+
 (defun top-level/handler (cmd)
   (clingon:print-usage-and-exit cmd t))
 
@@ -234,6 +250,8 @@
    :description "Common Lisp M3U Processing Swiss Army Knife"
    :authors '("Zhiqiang Xu <xeonxu@gmail.com>")
    :license "GPLv3"
+   :options (top-level/options)       ;; Register global options
+   :pre-hook #'top-level/pre-hook     ;; Register the pre-hook
    :handler #'top-level/handler
    :sub-commands (list (convert/command)
                        (check/command)
