@@ -3,7 +3,17 @@
 
 (defpackage :m3u-data
   (:use :cl)
-  (:export :transform-uri))
+  (:export :transform-uri
+           :playlist-item
+           :item-duration
+           :item-title
+           :item-uri
+           :item-attributes
+           :parse-m3u-file
+           :items-to-m3u
+           :save-items-to-m3u
+           :flexible-csv-row-to-item
+           :merge-items))
 
 (in-package :m3u-data)
 
@@ -29,7 +39,7 @@
 
 (defun parse-extinf-line (line item)
   "Ultimate enhanced version: supports unquoted attributes, mixed separators, and unified lowercase Keys"
-  
+
   ;; 1. Extract duration (remains unchanged)
   (cl-ppcre:register-groups-bind (dur)
       ("^#EXTINF:([-0-9\\.]+)" line)
@@ -38,8 +48,8 @@
   ;; 2. Extract title (remains unchanged, takes content after the last comma)
   (let ((last-comma-pos (position #\, line :from-end t)))
     (when last-comma-pos
-      (setf (item-title item) 
-            (string-trim '(#\Space #\Tab #\Return #\Newline) 
+      (setf (item-title item)
+            (string-trim '(#\Space #\Tab #\Return #\Newline)
                          (subseq line (1+ last-comma-pos))))))
 
   ;; 3. Extract all attributes (core modification)
@@ -53,10 +63,10 @@
   ;;    )
   (cl-ppcre:do-register-groups (key val-quoted val-unquoted)
       ("([a-zA-Z0-9\\-_]+)=(?:\"([^\"]*)\"|([^, ]+))" line)
-    
+
     (let ((final-key (string-downcase key)) ;; Force Key to lowercase
           (final-val (or val-quoted val-unquoted))) ;; Take the matched value
-      
+
       (when final-val
         (setf (gethash final-key (item-attributes item)) final-val)))))
 
@@ -73,10 +83,10 @@
                   ((uiop:string-prefix-p "#EXTINF:" clean-line)
                    (setf current-item (make-instance 'playlist-item))
                    (parse-extinf-line clean-line current-item))
-                  
+
                   ;; Case B: It is a URL line (and not other comments)
-                  ((and current-item 
-                        (> (length clean-line) 0) 
+                  ((and current-item
+                        (> (length clean-line) 0)
                         (not (uiop:string-prefix-p "#" clean-line)))
                    (setf (item-uri current-item) clean-line)
                    (push current-item items)
@@ -143,19 +153,19 @@
         (maphash (lambda (k v)
                    (setf attr-str (concatenate 'string attr-str (format nil " ~a=\"~a\"" k v))))
                  (item-attributes item))
-        
+
         ;; Write #EXTINF line
-        (format stream "#EXTINF:~d~a,~a~%" 
-                (item-duration item) 
-                attr-str 
+        (format stream "#EXTINF:~d~a,~a~%"
+                (item-duration item)
+                attr-str
                 (item-title item))
         ;; Write URI line
         (format stream "~a~%" (item-uri item))))))
 
 (defun save-items-to-m3u (items output-path)
   "Write the object list to the final M3U file"
-  (with-open-file (stream output-path 
-                          :direction :output 
+  (with-open-file (stream output-path
+                          :direction :output
                           :if-exists :supersede
                           :external-format :utf-8) ;; Explicitly specify UTF-8
     (format stream "#EXTM3U~%")
@@ -165,16 +175,16 @@
         (maphash (lambda (k v)
                    ;; Only write when both key and value have content
                    (when (and k v)
-                     (setf attr-str 
-                           (concatenate 'string attr-str 
+                     (setf attr-str
+                           (concatenate 'string attr-str
                                         (format nil " ~a=\"~a\"" k v)))))
                  (item-attributes item))
-        
+
         ;; Write #EXTINF line
         ;; Format: #EXTINF:duration [attributes...],title
-        (format stream "#EXTINF:~d~a,~a~%" 
-                (item-duration item) 
-                attr-str 
+        (format stream "#EXTINF:~d~a,~a~%"
+                (item-duration item)
+                attr-str
                 (item-title item))
         ;; Write URI
         (format stream "~a~%" (item-uri item))))))
@@ -183,7 +193,7 @@
   "Convert a row from CSV/XLSX to a playlist-item object.
    row: list of cell values
    headers: list of column names (Duration, Title, URI, ...)
-   
+
    Note: Duration defaults to 0 if parsing fails (e.g., empty or non-numeric values)."
   (let ((item (make-instance 'playlist-item)))
     ;; Map headers to row values
@@ -192,7 +202,7 @@
           for i from 0
           do
             (let ((clean-value (if value (format nil "~a" value) ""))
-                  (clean-header (string-trim '(#\Space) 
+                  (clean-header (string-trim '(#\Space)
                                              (if header (format nil "~a" header) ""))))
               (cond
                 ;; Duration column
@@ -209,3 +219,54 @@
                  (setf (gethash (string-downcase clean-header) (item-attributes item))
                        clean-value)))))
     item))
+
+(defun merge-items (existing-items new-items)
+  "Merge NEW-ITEMS into EXISTING-ITEMS using 'Title' as the primary key.
+   If a channel exists but has a different URI, append the new URI into
+   the attributes (e.g., as 'uri-2', 'uri-3').
+   If the channel and URI are completely identical, ignore the duplicate."
+  (let ((item-map (make-hash-table :test 'equal))
+        (result '()))
+
+    ;; 1. Index existing items and preserve their original order
+    (dolist (item existing-items)
+      (setf (gethash (item-title item) item-map) item)
+      (push item result))
+    (setf result (nreverse result))
+
+    ;; 2. Process new items for merging
+    (dolist (new-item new-items)
+      (let ((existing (gethash (item-title new-item) item-map)))
+        (if existing
+            ;; Case A: Channel exists, check if URI is a new alternative source
+            (let ((new-uri (item-uri new-item))
+                  (is-duplicate nil))
+
+              ;; Check if the primary URI is identical
+              (when (string= (item-uri existing) new-uri)
+                (setf is-duplicate t))
+
+              ;; Check if the URI already exists in the backup slots (uri-2 to uri-20)
+              (unless is-duplicate
+                (loop for i from 2 to 20
+                      for key = (format nil "uri-~d" i)
+                      for val = (gethash key (item-attributes existing))
+                      do (when (and val (string= val new-uri))
+                           (setf is-duplicate t)
+                           (return))))
+
+              ;; If it's not a duplicate, find an empty slot and insert it
+              (unless is-duplicate
+                (loop for i from 2 to 20
+                      for key = (format nil "uri-~d" i)
+                      for val = (gethash key (item-attributes existing))
+                      do (cond ((null val) ; Found an empty slot
+                                (setf (gethash key (item-attributes existing)) new-uri)
+                                (return))))))
+
+            ;; Case B: Completely new channel, append to the end and update the index
+            (progn
+              (setf (gethash (item-title new-item) item-map) new-item)
+              (setf result (append result (list new-item)))))))
+
+    result))

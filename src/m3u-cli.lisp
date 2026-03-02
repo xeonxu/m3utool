@@ -35,7 +35,7 @@
     :long-name "strip-proxy"
     :key :strip-proxy)))
 
-;; --- Define convert command ---
+;; --- Define convert handler ---
 (defun convert/handler (cmd)
   (let* ((args (clingon:command-arguments cmd))
          (input-file (first args))
@@ -87,6 +87,7 @@
          (format t "Error: Unsupported input file extension '.~a'. Only .m3u, .m3u8, and .xlsx are supported.~%" ext)
          (clingon:exit 1))))))
 
+;; --- Define convert command ---
 (defun convert/command ()
   (clingon:make-command
    :name "convert"
@@ -120,7 +121,7 @@
                         :short-name #\w :long-name "workers"
                         :key :workers :initial-value 20)))
 
-;; --- Define check command ---
+;; --- Define check handler ---
 (defun check/handler (cmd)
   (let ((input (clingon:getopt cmd :input))
         (url-str (clingon:getopt cmd :url))
@@ -167,6 +168,7 @@
               (dolist (item alive-items)
                 (format t "~a~%" (m3u-data::item-uri item)))))))))
 
+;; --- Define check command ---
 (defun check/command ()
   (clingon:make-command
    :name "check"
@@ -271,6 +273,7 @@
    :pre-hook #'top-level/pre-hook     ;; Register the pre-hook
    :handler #'top-level/handler
    :sub-commands (list (convert/command)
+                       (update/command)
                        (check/command)
                        (server/command))))
 
