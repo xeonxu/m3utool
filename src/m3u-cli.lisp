@@ -24,13 +24,14 @@
     :key :output)
    (clingon:make-option
     :string
-    :description "Specify the new server address (e.g., http://192.168.1.1:8080/udp/)"
-    :short-name #\s
+    :description "Change proxy address to the new server address (e.g., http://192.168.1.1:8080/udp/). It also implemented the strip function."
+    :short-name #\S
     :long-name "server"
     :key :server)
    (clingon:make-option
     :boolean/true ;; This is a flag; its presence indicates True
-    :description "Strip the original proxy address, keeping only the IP:Port at the end"
+    :description "Strip the original proxy address, keeping only the protocal://IP:Port at the end"
+    :short-name #\s
     :long-name "strip-proxy"
     :key :strip-proxy)))
 
@@ -90,7 +91,7 @@
   (clingon:make-command
    :name "convert"
    :description "Convert between M3U and XLSX (Auto-detected by file extension)"
-   :usage "INPUT-FILE [-o OUT] [-s SERVER] [--strip-proxy]"
+   :usage "INPUT-FILE [-o OUT] [--server SERVER] [--strip-proxy]"
    :options (convert/options)
    :handler #'convert/handler)
   )
