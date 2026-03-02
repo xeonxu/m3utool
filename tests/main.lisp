@@ -194,3 +194,48 @@
         ;; Assertion 5: The new channel CCTV-2 must be appended correctly
         (ok (string= (m3u-data:item-title cctv2) "CCTV-2") "New channel should be appended at the end")
         (ok (string= (m3u-data:item-uri cctv2) "http://new.com/2.ts") "New channel URI should be correct")))))
+
+;;; Tests for pure I/O in m3u-xlsx (Decoupled from transform-uri)
+(deftest test-write-and-read-xlsx-items
+  (testing "write-xlsx-items and read-xlsx-items should preserve playlist items and all dynamic attributes perfectly"
+    (let* ((test-file (format nil "~a/test-pure-io.xlsx" (uiop:temporary-directory)))
+           (item1 (make-instance 'm3u-data::playlist-item
+                                 :duration 120
+                                 :title "Test Channel 1"
+                                 :uri "http://example.com/stream1"))
+           (item2 (make-instance 'm3u-data::playlist-item
+                                 :duration 180
+                                 :title "Test Channel 2"
+                                 :uri "http://example.com/stream2"))
+           (items (list item1 item2)))
+
+      ;; Add diverse attributes (including the newly designed uri-2)
+      (setf (gethash "tvg-id" (m3u-data::item-attributes item1)) "channel1")
+      (setf (gethash "uri-2" (m3u-data::item-attributes item1)) "http://backup.com/stream1")
+      (setf (gethash "group-title" (m3u-data::item-attributes item2)) "Sports")
+
+      ;; Save to XLSX (Pure I/O)
+      (m3u-xlsx:write-xlsx-items items test-file)
+
+      ;; Load from XLSX
+      (let ((loaded-items (m3u-xlsx:read-xlsx-items test-file)))
+        (ok (= 2 (length loaded-items)) "Should successfully load exactly 2 items")
+
+        ;; Verify item 1
+        (let ((loaded-item1 (first loaded-items)))
+          (ok (= 120 (m3u-data::item-duration loaded-item1)))
+          (ok (string= "Test Channel 1" (m3u-data::item-title loaded-item1)))
+          (ok (string= "http://example.com/stream1" (m3u-data::item-uri loaded-item1)))
+          (ok (string= "channel1" (gethash "tvg-id" (m3u-data::item-attributes loaded-item1))))
+          (ok (string= "http://backup.com/stream1" (gethash "uri-2" (m3u-data::item-attributes loaded-item1)))))
+
+        ;; Verify item 2
+        (let ((loaded-item2 (second loaded-items)))
+          (ok (= 180 (m3u-data::item-duration loaded-item2)))
+          (ok (string= "Test Channel 2" (m3u-data::item-title loaded-item2)))
+          (ok (string= "http://example.com/stream2" (m3u-data::item-uri loaded-item2)))
+          (ok (string= "Sports" (gethash "group-title" (m3u-data::item-attributes loaded-item2))))))
+
+      Clean up
+      (when (probe-file test-file)
+        (delete-file test-file)))))

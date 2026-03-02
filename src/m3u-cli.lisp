@@ -273,7 +273,6 @@
    :pre-hook #'top-level/pre-hook     ;; Register the pre-hook
    :handler #'top-level/handler
    :sub-commands (list (convert/command)
-                       (update/command)
                        (check/command)
                        (server/command))))
 
