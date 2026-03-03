@@ -13,89 +13,111 @@
   (let ((p (pathname input-path)))
     (make-pathname :type new-ext :defaults p)))
 
+;; ==========================================
+;; UNIVERSAL I/O HELPERS
+;; ==========================================
+(defun m3u-file-p (path)
+  "Check if the file path has a valid M3U extension."
+  (let ((ext (string-downcase (pathname-type (pathname path)))))
+    (or (string= ext "m3u") (string= ext "m3u8"))))
+
+(defun excel-file-p (path)
+  "Check if the file path has a valid Excel extension."
+  (let ((ext (string-downcase (pathname-type (pathname path)))))
+    (or (string= ext "xlsx") (string= ext "xls"))))
+
+(defun load-items (path)
+  "Universally load items based on file extension."
+  (cond ((m3u-file-p path)
+         (m3u-data:parse-m3u-file path))
+        ((excel-file-p path)
+         (m3u-xlsx:read-xlsx-items path))
+        (t (error "Unsupported input format. Must be .m3u, .m3u8, .xls, or .xlsx: ~a" path))))
+
+(defun save-items (items path)
+  "Universally save items based on file extension."
+  (cond ((m3u-file-p path)
+         (m3u-data:save-items-to-m3u items path))
+        ((excel-file-p path)
+         (m3u-xlsx:write-xlsx-items items path))
+        (t (error "Unsupported output format. Must be .m3u, .m3u8, .xls, or .xlsx: ~a" path))))
+
 ;; --- Define convert options ---
 (defun convert/options ()
   (list
-   (clingon:make-option
-    :string
-    :description "Specify the output filename"
-    :short-name #\o
-    :long-name "output"
-    :key :output)
-   (clingon:make-option
-    :string
-    :description "Change proxy address to the new server address (e.g., http://192.168.1.1:8080/udp/). It also implemented the strip function."
-    :short-name #\S
-    :long-name "server"
-    :key :server)
-   (clingon:make-option
-    :boolean/true ;; This is a flag; its presence indicates True
-    :description "Strip the original proxy address, keeping only the protocal://IP:Port at the end"
-    :short-name #\s
-    :long-name "strip-proxy"
-    :key :strip-proxy)))
+   (clingon:make-option :string :description "Input file path (.m3u/.xlsx)" :short-name #\i :long-name "input" :key :input :required t)
+   (clingon:make-option :string :description "Output file path (.m3u/.xlsx)" :short-name #\o :long-name "output" :key :output :required t)
+   (clingon:make-option :boolean/true :description "Strip existing proxy prefix from URIs" :short-name #\s :long-name "strip-proxy" :key :strip-proxy)
+   (clingon:make-option :string :description "Change proxy address to the new server address (e.g., http://192.168.1.1:8080/udp/). It also implemented the strip function." :short-name #\S :long-name "server-url" :key :server-url)))
 
 ;; --- Define convert handler ---
 (defun convert/handler (cmd)
-  (let* ((args (clingon:command-arguments cmd))
-         (input-file (first args))
-         (server (clingon:getopt cmd :server))
-         (strip  (clingon:getopt cmd :strip-proxy)))
+  (let ((input-path (clingon:getopt cmd :input))
+        (output-path (clingon:getopt cmd :output))
+        (strip-proxy (clingon:getopt cmd :strip-proxy))
+        (server-url (clingon:getopt cmd :server-url)))
 
-    ;; Check if input file is provided
-    (when (or (not input-file) (= (length input-file) 0))
-      (clingon:print-usage-and-exit cmd t)
-      (return-from convert/handler))
+    (format t "Converting: ~a -> ~a~%" input-path output-path)
 
-    ;; Automatically enable strip if server URL is provided
-    (when server
-      (setf strip 't))
+    (let ((items (load-items input-path)))
+      ;; Apply URI transformations if proxy options are provided
+      (when (or strip-proxy server-url)
+        (format t "[INFO] Applying URI transformations (strip-proxy: ~a, server-url: ~a)~%" strip-proxy server-url)
+        (dolist (item items)
+          (setf (m3u-data:item-uri item)
+                (m3u-data:transform-uri (m3u-data:item-uri item)
+                                        :strip-proxy strip-proxy
+                                        :server-url server-url))))
 
-    ;; Extract file extension and determine conversion direction
-    (let* ((ext (string-downcase (pathname-type (pathname input-file))))
-           (is-m3u (or (string= ext "m3u") (string= ext "m3u8")))
-           (is-xlsx (or (string= ext "xlsx") (string= ext "xls")))
-           ;; Determine default output file based on input type
-           (output-file (or (clingon:getopt cmd :output)
-                            (namestring (default-output-path input-file (if is-m3u "xlsx" "m3u"))))))
-
-      (cond
-        ;; Branch A: M3U -> XLSX
-        (is-m3u
-         (format t "Converting M3U -> XLSX | Strip: ~a | Server: ~a~%" strip server)
-         (let ((items (m3u-data::parse-m3u-file input-file)))
-           (m3u-xlsx:save-xlsx items output-file
-                               :server-url server
-                               :strip-proxy strip)))
-
-        ;; Branch B: XLSX -> M3U
-        (is-xlsx
-         (format t "Converting XLSX -> M3U | Strip: ~a | Server: ~a~%" strip server)
-         (let ((items (m3u-xlsx:load-xlsx input-file)))
-           ;; Transform URIs in memory before saving
-           (dolist (item items)
-             (setf (m3u-data::item-uri item)
-                   (m3u-data:transform-uri (m3u-data::item-uri item)
-                                           :strip-proxy strip
-                                           :server-url server)))
-           ;; Save the modified objects to M3U
-           (m3u-data::save-items-to-m3u items output-file)
-           (format t "M3U generation complete -> ~a~%" output-file)))
-
-        ;; Branch C: Unsupported format
-        (t
-         (format t "Error: Unsupported input file extension '.~a'. Only .m3u, .m3u8, and .xlsx are supported.~%" ext)
-         (clingon:exit 1))))))
+      (save-items items output-path))))
 
 ;; --- Define convert command ---
 (defun convert/command ()
   (clingon:make-command
    :name "convert"
-   :description "Convert between M3U and XLSX (Auto-detected by file extension)"
-   :usage "INPUT-FILE [-o OUT] [--server SERVER] [--strip-proxy]"
+   :description "Convert formats and modify URI proxies"
+   :usage "-i <input> -o <output> [options]"
+   :examples '(("Convert M3U to XLSX" . "m3utool convert -i in.m3u -o out.xlsx")
+               ("Add proxy to M3U" . "m3utool convert -i in.m3u -o out.m3u -S http://192.168.1.1:8080/rtp/")
+               ("Strip proxy from DB" . "m3utool convert -i db.xlsx -o clean.m3u -s"))
    :options (convert/options)
-   :handler #'convert/handler)
-  )
+   :handler #'convert/handler))
+
+;; --- Define update option ---
+(defun update/options ()
+  (list
+   (clingon:make-option :string :description "Input file with new channels (.m3u or .xlsx)" :short-name #\i :long-name "input" :key :input :required t)
+   (clingon:make-option :string :description "Target Core Database (.xlsx)" :short-name #\d :long-name "database" :key :db :required t)
+   (clingon:make-option :string :description "Target Sheet Name (Optional)" :short-name #\s :long-name "sheet" :key :sheet)))
+
+;; --- Define update handler ---
+(defun update/handler (cmd)
+  (let ((input-path (clingon:getopt cmd :input))
+        (db-path (clingon:getopt cmd :db))
+        (sheet-name (clingon:getopt cmd :sheet)))
+
+    (format t "Updating database ~a with items from ~a...~%" db-path input-path)
+
+    (let* ((new-items (load-items input-path))
+           ;; If the database exists, load it; otherwise, start with an empty list
+           (existing-items (if (probe-file db-path) (load-items db-path) nil))
+           ;; Perform the core merge algorithm
+           (merged-items (if existing-items
+                             (m3u-data:merge-items existing-items new-items)
+                             new-items)))
+
+      ;; Force saving as XLSX since it's an update operation on the core DB
+      (m3u-xlsx:write-xlsx-items merged-items db-path :sheet-name sheet-name))))
+
+;; --- Define update command ---
+(defun update/command ()
+  (clingon:make-command
+   :name "update"
+   :description "Merge new channels into the core Excel database"
+   :usage "-i <new_channels> -d <core_database.xlsx> [options]"
+   :examples '(("Merge new scan into DB" . "m3utool update -i scan.m3u -d core.xlsx"))
+   :options (update/options)
+   :handler #'update/handler))
 
 ;; --- Define check option ---
 (defun check/options ()
@@ -273,6 +295,7 @@
    :pre-hook #'top-level/pre-hook     ;; Register the pre-hook
    :handler #'top-level/handler
    :sub-commands (list (convert/command)
+                       (update/command)
                        (check/command)
                        (server/command))))
 
