@@ -215,10 +215,11 @@
                         :key :port :initial-value 8080)
    (clingon:make-option :string
                         :description "Specify the new server address"
-                        :short-name #\s :long-name "server"
+                        :short-name #\S :long-name "server"
                         :key :server)
    (clingon:make-option :boolean/true
                         :description "Strip the original proxy address"
+                        :short-name #\s
                         :long-name "strip-proxy"
                         :key :strip-proxy)))
 
