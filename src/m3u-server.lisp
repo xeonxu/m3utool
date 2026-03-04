@@ -154,11 +154,29 @@
 </body>
 </html>")))
 
+;; --- Helper function to print iOS Safari SSL guide ---
+(defun print-ssl-guide (bind-address)
+  (let ((display-ip (if (string= bind-address "0.0.0.0") "192.168.x.x" bind-address)))
+    (format t "~%==================================================~%")
+    (format t "🚀 Server Startup & iOS Safari Guide~%")
+    (format t "--------------------------------------------------~%")
+    (format t "To enable HTTPS (required for modern iOS Safari), run this command~%")
+    (format t "in the current directory (~A) to generate a valid cert:~%~%" (uiop:getcwd))
+    (format t "  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \\~%")
+    (format t "  -sha256 -days 365 -nodes -subj '/CN=~A' \\~%" display-ip)
+    (format t "  -addext 'subjectAltName=IP:~A'~%~%" display-ip)
+    (format t "Then AirDrop 'cert.pem' to your iPhone and fully trust it in settings.~%")
+    (format t "The server will auto-detect the certs on the next startup.~%")
+    (format t "==================================================~%~%")))
+
 (defun start-server (input-xlsx bind-address port server-url strip-proxy)
-  "Start the Hunchentoot HTTP server and serve the dynamic playlist and Web UI."
+  "Start the Hunchentoot HTTP/HTTPS server and serve the dynamic playlist and Web UI."
+
+  (print-ssl-guide bind-address)
+
   (format t "Starting M3U server on ~a:~d...~%" bind-address port)
   (format t "Serving database: ~a~%" input-xlsx)
-  
+
   ;; --- Route 1: Raw M3U file download endpoint ---
   (hunchentoot:define-easy-handler (playlist :uri "/playlist.m3u") ()
     (setf (hunchentoot:content-type*) "audio/x-mpegurl; charset=utf-8")
@@ -189,21 +207,38 @@
       (error (e)
         (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
         (format nil "<h1>Error reading database: ~a</h1>" e))))
-  
-  ;; Initialize and start the server
 
-  (let ((acceptor (make-instance 'hunchentoot:easy-acceptor
-                                 :address bind-address
-                                 :port port)))
-    (hunchentoot:start acceptor)
-    (format t "~%[SUCCESS] Server is running!~%")
-    (format t "--> Web Player: http://~a:~d/~%" (if (string= bind-address "0.0.0.0") "127.0.0.1" bind-address) port)
-    (format t "--> Raw Playlist: http://~a:~d/playlist.m3u~%" (if (string= bind-address "0.0.0.0") "127.0.0.1" bind-address) port)
-    (format t "Press Ctrl+C to stop the server.~%")
+  ;; --- Initialize and start the server (Auto SSL Logic) ---
+  (let* ((current-dir (uiop:getcwd))
+         (cert-path (merge-pathnames "cert.pem" current-dir))
+         (key-path (merge-pathnames "key.pem" current-dir))
+         (is-ssl (and (probe-file cert-path) (probe-file key-path)))
+         (protocol (if is-ssl "https" "http"))
+         (display-ip (if (string= bind-address "0.0.0.0") "127.0.0.1" bind-address)))
 
-    (handler-case
-        (loop (sleep 60))
-      #+sbcl (sb-sys:interactive-interrupt ()
-               (format t "~%Shutting down server...~%")
-               (hunchentoot:stop acceptor)
-               (uiop:quit 0)))))
+    (let ((acceptor (if is-ssl
+                        (make-instance 'hunchentoot:easy-ssl-acceptor
+                                       :address bind-address
+                                       :port port
+                                       :ssl-certificate-file cert-path
+                                       :ssl-privatekey-file key-path)
+                        (make-instance 'hunchentoot:easy-acceptor
+                                       :address bind-address
+                                       :port port))))
+
+      (if is-ssl
+          (format t "[INFO] Found cert.pem and key.pem. Starting in HTTPS mode...~%")
+          (format t "[WARN] Certificates not found. Falling back to HTTP mode...~%"))
+
+      (hunchentoot:start acceptor)
+      (format t "~%[SUCCESS] Server is running!~%")
+      (format t "--> Web Player: ~a://~a:~d/~%" protocol display-ip port)
+      (format t "--> Raw Playlist: ~a://~a:~d/playlist.m3u~%" protocol display-ip port)
+      (format t "Press Ctrl+C to stop the server.~%")
+
+      (handler-case
+          (loop (sleep 60))
+        #+sbcl (sb-sys:interactive-interrupt ()
+                 (format t "~%Shutting down server...~%")
+                 (hunchentoot:stop acceptor)
+                 (uiop:quit 0))))))
