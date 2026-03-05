@@ -41,8 +41,7 @@
         #now-playing { font-size: 1.2rem; color: #00ff88; font-weight: bold; margin-bottom: 10px; }
         #raw-url { font-family: monospace; color: #aaa; background: #000; padding: 8px; border-radius: 4px; word-break: break-all; margin-bottom: 15px; font-size: 0.9rem; }
         .ext-btn { display: inline-block; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-size: 1rem; transition: background 0.2s; margin: 0 5px; cursor: pointer; border: none; }
-        .vlc-btn { background: #ff8800; } .vlc-btn:hover { background: #cc6600; }
-        .pot-btn { background: #dddd00; color: #000; } .pot-btn:hover { background: #aaaa00; }
+        .desktop-btn { background: #ff8800; } .desktop-btn:hover { background: #cc6600; }
         .iina-btn { background: #007bff; } .iina-btn:hover { background: #0056b3; }
         #playlist-container { flex: 1; background: #1e1e1e; border-left: 1px solid #333; display: flex; flex-direction: column; min-width: 320px; }
         .header { padding: 15px; background: #252525; font-size: 1.1rem; font-weight: bold; border-bottom: 1px solid #333; }
@@ -62,8 +61,7 @@
         <div class='controls-area'>
             <div id='now-playing'>Select a channel...</div>
             <div id='raw-url'>Stream URL will appear here</div>
-            <a id='vlc-link' href='#' class='ext-btn vlc-btn'>Play in VLC</a>
-            <a id='pot-link' href='#' class='ext-btn pot-btn'>PotPlayer</a>
+            <a id='desktop-link' href='#' class='ext-btn desktop-btn'>Desktop Player (PotPlayer/VLC)</a>
             <a id='iina-link' href='#' class='ext-btn iina-btn'>IINA (Mac)</a>
         </div>
     </div>
@@ -78,6 +76,7 @@
              (group (gethash "group-title" (m3u-data:item-attributes item) "Uncategorized"))
              (logo (gethash "tvg-logo" (m3u-data:item-attributes item) ""))
              (safe-uri (str:replace-all "'" "\\'" uri))
+             (safe-title (str:replace-all "'" "\\'" title))
              ;; Safely handle logo HTML generation
              (logo-html (if (and (> (length logo) 0) (not (string= logo "#<MISSING>")))
                             (format nil "<img class='channel-logo' src='~a' loading='lazy' onerror=\"this.style.display='none'\">" (str:replace-all "'" "\\'" logo))
@@ -88,7 +87,7 @@
                           <span class='channel-title'>~a</span>
                           <span class='channel-group'>~a</span>
                       </div>
-                   </li>~%" safe-uri title logo-html title group)))
+                   </li>~%" safe-uri safe-title logo-html title group)))
 
     (format s "        </ul>
     </div>
@@ -100,11 +99,13 @@
             document.getElementById('now-playing').innerText = 'Playing: ' + title;
             document.getElementById('raw-url').innerText = url;
 
-            // Dynamically update external player activation links
-            document.getElementById('vlc-link').href = 'vlc://' + url;
-            document.getElementById('pot-link').href = 'potplayer://' + url;
-            // IINA requires standard URL encoding for its custom protocol parameter
-            document.getElementById('iina-link').href = 'iina://weblink?url=' + encodeURIComponent(url);
+            // 1. Desktop Players (Windows/Linux) - Generate dynamic M3U download link
+            // This guarantees 100% compatibility with PotPlayer and VLC
+            var launchUrl = '/launch.m3u?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title);
+            document.getElementById('desktop-link').setAttribute('href', launchUrl);
+            
+            // 2. IINA (Mac) - standard weblink protocol works perfectly
+            document.getElementById('iina-link').setAttribute('href', 'iina://weblink?url=' + encodeURIComponent(url));
 
             // Alert on native UDP/RTP browser limitations
             if(url.startsWith('udp://') || url.startsWith('rtp://')) {
@@ -122,7 +123,7 @@
             }
 
             try {
-                // 1. Try HLS (.m3u8) first
+                // Playback logic for browser
                 if (url.includes('.m3u8')) {
                     if (Hls.isSupported()) {
                         var hls = new Hls();
@@ -134,14 +135,12 @@
                         videoElement.play();
                     }
                 }
-                // 2. Try MPEG-TS (e.g., proxied HTTP-UDP stream or raw .ts file)
                 else if (mpegts.getFeatureList().mseLivePlayback) {
                     mpegtsPlayer = mpegts.createPlayer({ type: 'mse', isLive: true, url: url });
                     mpegtsPlayer.attachMediaElement(videoElement);
                     mpegtsPlayer.load();
                     mpegtsPlayer.play();
                 }
-                // 3. Native fallback for other formats
                 else {
                     videoElement.src = url;
                     videoElement.play();
@@ -197,7 +196,6 @@
     (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
     (handler-case
         (let ((items (m3u-xlsx:read-xlsx-items input-xlsx)))
-          ;; Apply URI transformations dynamically so the browser gets the playable HTTP proxy links
           (dolist (item items)
             (setf (m3u-data:item-uri item)
                   (m3u-data:transform-uri (m3u-data:item-uri item)
@@ -207,6 +205,15 @@
       (error (e)
         (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
         (format nil "<h1>Error reading database: ~a</h1>" e))))
+
+  ;; --- Route 3: Dynamic Single-Channel M3U Launcher (For Desktop Players) ---
+  (hunchentoot:define-easy-handler (launch-player :uri "/launch.m3u") (url title)
+    (setf (hunchentoot:content-type*) "audio/x-mpegurl; charset=utf-8")
+    ;; Trigger standard download/open-with behavior in the browser
+    (setf (hunchentoot:header-out :content-disposition) "attachment; filename=\"play.m3u\"")
+    (format nil "#EXTM3U~%#EXTINF:-1,~a~%~a~%"
+            (or title "Live Stream")
+            url))
 
   ;; --- Initialize and start the server (Auto SSL Logic) ---
   (let* ((current-dir (uiop:getcwd))
