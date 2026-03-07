@@ -275,12 +275,12 @@
     ;; Start Swank (for SLIME) if specified
     (when slime-port
       (format t "[DEBUG] Starting Swank Server (for SLIME) on port ~a...~%" slime-port)
-      (swank:create-server :port slime-port :dont-close t))
+      (swank:create-server :interface "0.0.0.0" :port slime-port :dont-close t))
 
     ;; Start Slynk (for SLY) if specified
     (when sly-port
       (format t "[DEBUG] Starting Slynk Server (for SLY) on port ~a...~%" sly-port)
-      (slynk:create-server :port sly-port :dont-close t))))
+      (slynk:create-server :interface "0.0.0.0" :port sly-port :dont-close t))))
 
 (defun top-level/handler (cmd)
   (clingon:print-usage-and-exit cmd t))
