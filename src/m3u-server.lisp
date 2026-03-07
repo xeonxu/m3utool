@@ -103,7 +103,7 @@
             // This guarantees 100% compatibility with PotPlayer and VLC
             var launchUrl = '/launch.m3u?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title);
             document.getElementById('desktop-link').setAttribute('href', launchUrl);
-            
+
             // 2. IINA (Mac) - standard weblink protocol works perfectly
             document.getElementById('iina-link').setAttribute('href', 'iina://weblink?url=' + encodeURIComponent(url));
 
@@ -168,13 +168,28 @@
     (format t "The server will auto-detect the certs on the next startup.~%")
     (format t "==================================================~%~%")))
 
-(defun start-server (input-xlsx bind-address port server-url strip-proxy)
-  "Start the Hunchentoot HTTP/HTTPS server and serve the dynamic playlist and Web UI."
+(defvar *acceptors* nil)
 
-  (print-ssl-guide bind-address)
+(defun stop-server ()
+  "Safely stops all running Hunchentoot acceptors."
+  (when *acceptors*
+    (dolist (acceptor *acceptors*)
+      (hunchentoot:stop acceptor))
+    (setf *acceptors* nil)
+    (format t "[INFO] All m3u-server instances stopped.~%")))
 
-  (format t "Starting M3U server on ~a:~d...~%" bind-address port)
+(defun start-server (input-xlsx bind-address port https-port server-url strip-proxy)
+  "Start Hunchentoot HTTP and/or HTTPS servers based on provided port arguments."
+
+  ;; If the user wants HTTPS, print the guide in case they need to generate certs
+  (when https-port
+    (print-ssl-guide bind-address))
+
+  (format t "Initializing M3U server setup...~%")
   (format t "Serving database: ~a~%" input-xlsx)
+
+  ;; --- Route Definitions (Keep your existing routes here) ---
+  ;; (playlist, web-ui, launch-player routes remain exactly the same)
 
   ;; --- Route 1: Raw M3U file download endpoint ---
   (hunchentoot:define-easy-handler (playlist :uri "/playlist.m3u") ()
@@ -215,37 +230,48 @@
             (or title "Live Stream")
             url))
 
-  ;; --- Initialize and start the server (Auto SSL Logic) ---
+  ;; --- Acceptor Initialization Logic ---
+  ;; Ensure previous instances are stopped before starting new ones
+  (stop-server)
+
   (let* ((current-dir (uiop:getcwd))
          (cert-path (merge-pathnames "cert.pem" current-dir))
          (key-path (merge-pathnames "key.pem" current-dir))
-         (is-ssl (and (probe-file cert-path) (probe-file key-path)))
-         (protocol (if is-ssl "https" "http"))
+         (certs-exist (and (probe-file cert-path) (probe-file key-path)))
          (display-ip (if (string= bind-address "0.0.0.0") "127.0.0.1" bind-address)))
 
-    (let ((acceptor (if is-ssl
-                        (make-instance 'hunchentoot:easy-ssl-acceptor
-                                       :address bind-address
-                                       :port port
-                                       :ssl-certificate-file cert-path
-                                       :ssl-privatekey-file key-path)
-                        (make-instance 'hunchentoot:easy-acceptor
-                                       :address bind-address
-                                       :port port))))
+    ;; 1. Start HTTP Server (if port is provided)
+    (when port
+      (let ((http-acceptor (make-instance 'hunchentoot:easy-acceptor
+                                          :address bind-address
+                                          :port port)))
+        (hunchentoot:start http-acceptor)
+        (push http-acceptor *acceptors*)
+        (format t "[SUCCESS] HTTP Server running at: http://~a:~d/~%" display-ip port)))
 
-      (if is-ssl
-          (format t "[INFO] Found cert.pem and key.pem. Starting in HTTPS mode...~%")
-          (format t "[WARN] Certificates not found. Falling back to HTTP mode...~%"))
+    ;; 2. Start HTTPS Server (if https-port is provided)
+    (when https-port
+      (if certs-exist
+          (let ((https-acceptor (make-instance 'hunchentoot:easy-ssl-acceptor
+                                               :address bind-address
+                                               :port https-port
+                                               :ssl-certificate-file cert-path
+                                               :ssl-privatekey-file key-path)))
+            (hunchentoot:start https-acceptor)
+            (push https-acceptor *acceptors*)
+            (format t "[SUCCESS] HTTPS Server running at: https://~a:~d/~%" display-ip https-port))
+          (format t "[ERROR] HTTPS port ~d was specified, but cert.pem/key.pem were not found in the current directory. HTTPS server aborted.~%" https-port)))
 
-      (hunchentoot:start acceptor)
-      (format t "~%[SUCCESS] Server is running!~%")
-      (format t "--> Web Player: ~a://~a:~d/~%" protocol display-ip port)
-      (format t "--> Raw Playlist: ~a://~a:~d/playlist.m3u~%" protocol display-ip port)
-      (format t "Press Ctrl+C to stop the server.~%")
-
-      (handler-case
-          (loop (sleep 60))
-        #+sbcl (sb-sys:interactive-interrupt ()
-                 (format t "~%Shutting down server...~%")
-                 (hunchentoot:stop acceptor)
-                 (uiop:quit 0))))))
+    ;; 3. Check if any server actually started
+    (if (null *acceptors*)
+        (progn
+          (format t "~%[FATAL] No servers were started! Please specify at least one valid port (e.g., -p 8080 and/or --https-port 8443).~%")
+          (uiop:quit 1))
+        (progn
+          (format t "~%Press Ctrl+C to stop the server(s).~%")
+          (handler-case
+              (loop (sleep 60))
+            #+sbcl (sb-sys:interactive-interrupt ()
+                     (format t "~%Shutting down server(s)...~%")
+                     (stop-server)
+                     (uiop:quit 0)))))))
