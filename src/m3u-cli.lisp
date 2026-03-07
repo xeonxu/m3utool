@@ -223,9 +223,14 @@
                         :short-name #\b :long-name "bind"
                         :key :bind :initial-value "0.0.0.0")
    (clingon:make-option :integer
-                        :description "Port to listen on (default: 8080)"
+                        :description "Specify the HTTP server port (e.g., 8080)"
                         :short-name #\p :long-name "port"
-                        :key :port :initial-value 8080)
+                        :long-name "port"
+                        :key :port)
+   (clingon:make-option :integer
+                        :description "Specify the HTTPS server port (e.g., 8443)"
+                        :short-name #\P :long-name "https-port"
+                        :key :https-port)
    (clingon:make-option :string
                         :description "Specify the new server address"
                         :short-name #\S :long-name "server"
@@ -241,6 +246,7 @@
   (let ((input (clingon:getopt cmd :input))
         (bind (clingon:getopt cmd :bind))
         (port (clingon:getopt cmd :port))
+        (https-port (clingon:getopt cmd :https-port))
         (server (clingon:getopt cmd :server))
         (strip (clingon:getopt cmd :strip-proxy)))
 
@@ -252,7 +258,7 @@
       (setf strip 't))
 
     ;; Delegate to the m3u-server module
-    (m3u-server:start-server input bind port server strip)))
+    (m3u-server:start-server input bind port https-port server strip)))
 
 ;; Build the Command Object
 (defun server/command ()
