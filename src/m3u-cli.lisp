@@ -9,7 +9,7 @@
                          :slynk/profiler
                          :slynk/indentation
                          :slynk/package-fu
-                         )))
+                         :slynk/fancy-inspector)))
     (dolist (module slynk-modules)
       (format t "[BUILD] Pre-loading Slynk contrib: ~A~%" module)
       (ql:quickload module))))
