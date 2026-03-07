@@ -1,5 +1,18 @@
 (eval-when (:load-toplevel :compile-toplevel :execute)
-  (ql:quickload '(:clingon)))
+  (ql:quickload '(:clingon :slynk :swank))
+  ;; Pre-load all common SLY contribs into the memory image so it won't
+  ;;    attempt to find the source files dynamically on the deployment server.
+  (let ((slynk-modules '(:slynk/mrepl
+                         :slynk/arglists
+                         :slynk/stickers
+                         :slynk/trace-dialog
+                         :slynk/profiler
+                         :slynk/indentation
+                         :slynk/package-fu
+                         )))
+    (dolist (module slynk-modules)
+      (format t "[BUILD] Pre-loading Slynk contrib: ~A~%" module)
+      (ql:quickload module))))
 
 (defpackage :m3u-cli
   (:use :cl)
