@@ -41,8 +41,10 @@
         #now-playing { font-size: 1.2rem; color: #00ff88; font-weight: bold; margin-bottom: 10px; }
         #raw-url { font-family: monospace; color: #aaa; background: #000; padding: 8px; border-radius: 4px; word-break: break-all; margin-bottom: 15px; font-size: 0.9rem; }
         .ext-btn { display: inline-block; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-size: 1rem; transition: background 0.2s; margin: 0 5px; cursor: pointer; border: none; }
-        .desktop-btn { background: #ff8800; } .desktop-btn:hover { background: #cc6600; }
+        .vlc-btn { background: #ff8800; } .vlc-btn:hover { background: #cc6600; }
+        .pot-btn { background: #dddd00; color: #000; } .pot-btn:hover { background: #aaaa00; }
         .iina-btn { background: #007bff; } .iina-btn:hover { background: #0056b3; }
+        .m3u-btn { background: #008800; } .m3u-btn:hover { background: #556600; }
         #playlist-container { flex: 1; background: #1e1e1e; border-left: 1px solid #333; display: flex; flex-direction: column; min-width: 320px; }
         .header { padding: 15px; background: #252525; font-size: 1.1rem; font-weight: bold; border-bottom: 1px solid #333; }
         #channel-list { flex: 1; overflow-y: auto; padding: 0; margin: 0; list-style: none; }
@@ -61,8 +63,10 @@
         <div class='controls-area'>
             <div id='now-playing'>Select a channel...</div>
             <div id='raw-url'>Stream URL will appear here</div>
-            <a id='desktop-link' href='#' class='ext-btn desktop-btn'>Desktop Player (PotPlayer/VLC)</a>
+            <a id='vlc-link' href='#' class='ext-btn vlc-btn'>VLC</a>
+            <a id='pot-link' href='#' class='ext-btn pot-btn'>PotPlayer</a>
             <a id='iina-link' href='#' class='ext-btn iina-btn'>IINA (Mac)</a>
+            <a id='m3u-link' href='#' class='ext-btn m3u-btn'>M3U link</a>
         </div>
     </div>
     <div id='playlist-container'>
@@ -99,13 +103,16 @@
             document.getElementById('now-playing').innerText = 'Playing: ' + title;
             document.getElementById('raw-url').innerText = url;
 
-            // 1. Desktop Players (Windows/Linux) - Generate dynamic M3U download link
-            // This guarantees 100% compatibility with PotPlayer and VLC
-            var launchUrl = '/launch.m3u?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title);
-            document.getElementById('desktop-link').setAttribute('href', launchUrl);
+            // Dynamically update external player activation links
+            document.getElementById('vlc-link').href = 'vlc://' + url;
+            document.getElementById('pot-link').href = 'potplayer://' + url;
 
-            // 2. IINA (Mac) - standard weblink protocol works perfectly
+            // IINA (Mac) - standard weblink protocol works perfectly
             document.getElementById('iina-link').setAttribute('href', 'iina://weblink?url=' + encodeURIComponent(url));
+
+            // Generate dynamic M3U download link
+            var launchUrl = '/launch.m3u?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title);
+            document.getElementById('m3u-link').setAttribute('href', launchUrl);
 
             // Alert on native UDP/RTP browser limitations
             if(url.startsWith('udp://') || url.startsWith('rtp://')) {
