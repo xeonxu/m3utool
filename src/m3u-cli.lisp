@@ -39,20 +39,20 @@
   (let ((ext (string-downcase (pathname-type (pathname path)))))
     (or (string= ext "xlsx") (string= ext "xls"))))
 
-(defun load-items (path)
+(defun load-items (path &key sheet-name)
   "Universally load items based on file extension."
   (cond ((m3u-file-p path)
          (m3u-data:parse-m3u-file path))
         ((excel-file-p path)
-         (m3u-xlsx:read-xlsx-items path))
+         (m3u-xlsx:read-xlsx-items path :sheet-name sheet-name))
         (t (error "Unsupported input format. Must be .m3u, .m3u8, .xls, or .xlsx: ~a" path))))
 
-(defun save-items (items path)
+(defun save-items (items path &key sheet-name)
   "Universally save items based on file extension."
   (cond ((m3u-file-p path)
          (m3u-data:save-items-to-m3u items path))
         ((excel-file-p path)
-         (m3u-xlsx:write-xlsx-items items path))
+         (m3u-xlsx:write-xlsx-items items path :sheet-name sheet-name))
         (t (error "Unsupported output format. Must be .m3u, .m3u8, .xls, or .xlsx: ~a" path))))
 
 ;; --- Define convert options ---
@@ -61,18 +61,34 @@
    (clingon:make-option :string :description "Input file path (.m3u/.xlsx)" :short-name #\i :long-name "input" :key :input :required t)
    (clingon:make-option :string :description "Output file path (.m3u/.xlsx)" :short-name #\o :long-name "output" :key :output :required t)
    (clingon:make-option :boolean/true :description "Strip existing proxy prefix from URIs" :short-name #\s :long-name "strip-proxy" :key :strip-proxy)
-   (clingon:make-option :string :description "Change proxy address to the new server address (e.g., http://192.168.1.1:8080/udp/). It also implemented the strip function." :short-name #\S :long-name "server-url" :key :server-url)))
+   (clingon:make-option :string :description "Change proxy address to the new server address (e.g., http://192.168.1.1:8080/udp/). It also implemented the strip function." :short-name #\S :long-name "server-url" :key :server-url)
+   (clingon:make-option :string :description "Sheet name to read from input XLSX (default: first sheet)" :long-name "sheet" :key :sheet)
+   (clingon:make-option :string :description "Sheet name to write to output XLSX (default: Channel List)" :long-name "output-sheet" :key :output-sheet)
+   (clingon:make-option :boolean/true :description "List all sheet names in the input XLSX and exit" :long-name "list-sheets" :key :list-sheets)))
 
 ;; --- Define convert handler ---
 (defun convert/handler (cmd)
   (let ((input-path (clingon:getopt cmd :input))
         (output-path (clingon:getopt cmd :output))
         (strip-proxy (clingon:getopt cmd :strip-proxy))
-        (server-url (clingon:getopt cmd :server-url)))
+        (server-url (clingon:getopt cmd :server-url))
+        (sheet-name (clingon:getopt cmd :sheet))
+        (output-sheet (clingon:getopt cmd :output-sheet))
+        (list-sheets (clingon:getopt cmd :list-sheets)))
+
+    ;; --list-sheets flag: print sheet names and exit
+    (when list-sheets
+      (if (excel-file-p input-path)
+          (progn
+            (format t "Sheets in ~a:~%" input-path)
+            (dolist (name (m3u-xlsx:list-sheet-names input-path))
+              (format t "  - ~a~%" name)))
+          (format t "Error: --list-sheets only works with XLSX input files.~%"))
+      (return-from convert/handler))
 
     (format t "Converting: ~a -> ~a~%" input-path output-path)
 
-    (let ((items (load-items input-path)))
+    (let ((items (load-items input-path :sheet-name sheet-name)))
       ;; Apply URI transformations if proxy options are provided
       (when (or strip-proxy server-url)
         (format t "[INFO] Applying URI transformations (strip-proxy: ~a, server-url: ~a)~%" strip-proxy server-url)
@@ -82,7 +98,7 @@
                                         :strip-proxy strip-proxy
                                         :server-url server-url))))
 
-      (save-items items output-path))))
+      (save-items items output-path :sheet-name output-sheet))))
 
 ;; --- Define convert command ---
 (defun convert/command ()
@@ -101,19 +117,23 @@
   (list
    (clingon:make-option :string :description "Input file with new channels (.m3u or .xlsx)" :short-name #\i :long-name "input" :key :input :required t)
    (clingon:make-option :string :description "Target Core Database (.xlsx)" :short-name #\d :long-name "database" :key :db :required t)
-   (clingon:make-option :string :description "Target Sheet Name (Optional)" :short-name #\s :long-name "sheet" :key :sheet)))
+   (clingon:make-option :string :description "Target Sheet Name (Optional)" :short-name #\s :long-name "sheet" :key :sheet)
+   (clingon:make-option :string :description "Sheet name to read from input file (default: first sheet)" :long-name "input-sheet" :key :input-sheet)))
 
 ;; --- Define update handler ---
 (defun update/handler (cmd)
   (let ((input-path (clingon:getopt cmd :input))
         (db-path (clingon:getopt cmd :db))
-        (sheet-name (clingon:getopt cmd :sheet)))
+        (sheet-name (clingon:getopt cmd :sheet))
+        (input-sheet (clingon:getopt cmd :input-sheet)))
 
     (format t "Updating database ~a with items from ~a...~%" db-path input-path)
 
-    (let* ((new-items (load-items input-path))
+    (let* ((new-items (load-items input-path :sheet-name input-sheet))
            ;; If the database exists, load it; otherwise, start with an empty list
-           (existing-items (if (probe-file db-path) (load-items db-path) nil))
+           (existing-items (if (probe-file db-path)
+                               (load-items db-path :sheet-name sheet-name)
+                               nil))
            ;; Perform the core merge algorithm
            (merged-items (if existing-items
                              (m3u-data:merge-items existing-items new-items)
@@ -239,7 +259,11 @@
                         :description "Strip the original proxy address"
                         :short-name #\s
                         :long-name "strip-proxy"
-                        :key :strip-proxy)))
+                        :key :strip-proxy)
+   (clingon:make-option :string
+                        :description "Serve only the specified sheet from the XLSX database"
+                        :long-name "sheet"
+                        :key :sheet)))
 
 ;; Define Server Handler
 (defun server/handler (cmd)
@@ -248,7 +272,8 @@
         (port (clingon:getopt cmd :port))
         (https-port (clingon:getopt cmd :https-port))
         (server (clingon:getopt cmd :server))
-        (strip (clingon:getopt cmd :strip-proxy)))
+        (strip (clingon:getopt cmd :strip-proxy))
+        (sheet-name (clingon:getopt cmd :sheet)))
 
     (unless input
       (format t "Error: You must provide an input XLSX file using -i or --input.~%")
@@ -258,7 +283,7 @@
       (setf strip 't))
 
     ;; Delegate to the m3u-server module
-    (m3u-server:start-server input bind port https-port server strip)))
+    (m3u-server:start-server input bind port https-port server strip :sheet-name sheet-name)))
 
 ;; Build the Command Object
 (defun server/command ()
@@ -267,6 +292,107 @@
    :description "Start an HTTP server to serve a dynamic M3U playlist from an XLSX file"
    :options (server/options)
    :handler #'server/handler))
+
+;; --- Define scan options ---
+(defun scan/options ()
+  (list
+   (clingon:make-option :string
+                        :description "CIDR range to scan (e.g., 239.1.1.0/24)"
+                        :short-name #\r :long-name "range"
+                        :key :range)
+   (clingon:make-option :string
+                        :description "Start IP of range"
+                        :long-name "start-ip"
+                        :key :start-ip)
+   (clingon:make-option :string
+                        :description "End IP of range"
+                        :long-name "end-ip"
+                        :key :end-ip)
+   (clingon:make-option :string
+                        :description "Port or port range (e.g., 5000 or 5000-5010)"
+                        :short-name #\p :long-name "port"
+                        :key :port :initial-value "5000")
+   (clingon:make-option :string
+                        :description "Protocol: rtp, udp, or http"
+                        :long-name "proto"
+                        :key :proto :initial-value "rtp")
+   (clingon:make-option :string
+                        :description "Custom URI template (use ~a for IP, ~a for port)"
+                        :long-name "template"
+                        :key :template)
+   (clingon:make-option :string
+                        :description "Output file path (.m3u or .xlsx)"
+                        :short-name #\o :long-name "output"
+                        :key :output :required t)
+   (clingon:make-option :string
+                        :description "Merge results into existing XLSX database"
+                        :short-name #\d :long-name "database"
+                        :key :db)
+   (clingon:make-option :string
+                        :description "Target sheet name for merge"
+                        :short-name #\s :long-name "sheet"
+                        :key :sheet)
+   (clingon:make-option :integer
+                        :description "Connection timeout in seconds"
+                        :short-name #\t :long-name "timeout"
+                        :key :timeout :initial-value 3)
+   (clingon:make-option :integer
+                        :description "Number of concurrent workers"
+                        :short-name #\w :long-name "workers"
+                        :key :workers :initial-value 20)))
+
+;; --- Define scan handler ---
+(defun scan/handler (cmd)
+  (let ((range (clingon:getopt cmd :range))
+        (start-ip (clingon:getopt cmd :start-ip))
+        (end-ip (clingon:getopt cmd :end-ip))
+        (port (clingon:getopt cmd :port))
+        (proto (clingon:getopt cmd :proto))
+        (template (clingon:getopt cmd :template))
+        (output (clingon:getopt cmd :output))
+        (db (clingon:getopt cmd :db))
+        (sheet (clingon:getopt cmd :sheet))
+        (timeout (clingon:getopt cmd :timeout))
+        (workers (clingon:getopt cmd :workers)))
+
+    ;; 1. Construct IP range spec
+    (let ((ip-spec
+            (cond (range range)
+                  ((and start-ip end-ip)
+                   (format nil "~a-~a" start-ip end-ip))
+                  (start-ip start-ip)
+                  (t (progn
+                       (format t "Error: You must provide --range, --start-ip/--end-ip, or --start-ip alone.~%")
+                       (clingon:exit 1))))))
+      (format t "Scan Configuration:~%")
+      (format t "  IP range: ~a~%" ip-spec)
+      (format t "  Port(s):  ~a~%" port)
+      (format t "  Protocol: ~a~%" proto)
+      (format t "  Timeout:  ~ds | Workers: ~d~%" timeout workers)
+      (format t "  Output:   ~a~%" output)
+      (when db (format t "  Merge DB: ~a (sheet: ~a)~%" db (or sheet "default")))
+      (format t "~%")
+
+      ;; 2. Run scan
+      (m3u-scan:scan-and-save ip-spec port output
+                               :proto proto
+                               :template template
+                               :threads workers
+                               :timeout timeout
+                               :database-path db
+                               :sheet-name sheet))))
+
+;; --- Define scan command ---
+(defun scan/command ()
+  (clingon:make-command
+   :name "scan"
+   :description "Scan IP address ranges for available channels (multicast and unicast)"
+   :usage "-r <cidr> -p <port> --proto <rtp|udp|http> -o <output> [options]"
+   :examples '(("Scan multicast range" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -o scan.xlsx")
+               ("Scan and merge to DB" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -o scan.m3u -d core.xlsx -s Shanghai")
+               ("Scan IP range with template" . "m3utool scan --start-ip 192.168.1.1 --end-ip 192.168.1.254 -p 8080 --proto http --template 'http://~a:~a/udp/239.1.1.1:5000' -o scan.xlsx"))
+   :options (scan/options)
+   :handler #'scan/handler))
 
 ;; --- Define Top-Level Global Options ---
 (defun top-level/options ()
@@ -317,6 +443,7 @@
    :sub-commands (list (convert/command)
                        (update/command)
                        (check/command)
+                       (scan/command)
                        (server/command))))
 
 (defun main (&optional arguments)

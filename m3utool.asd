@@ -26,6 +26,7 @@
                          (:file "m3u-data")
                          (:file "m3u-xlsx")
                          (:file "m3u-check")
+                         (:file "m3u-scan")
                          (:file "m3u-server")
                          (:file "m3u-cli"))))
   :defsystem-depends-on (:deploy)

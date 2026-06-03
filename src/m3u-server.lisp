@@ -185,7 +185,7 @@
     (setf *acceptors* nil)
     (format t "[INFO] All m3u-server instances stopped.~%")))
 
-(defun start-server (input-xlsx bind-address port https-port server-url strip-proxy)
+(defun start-server (input-xlsx bind-address port https-port server-url strip-proxy &key sheet-name)
   "Start Hunchentoot HTTP and/or HTTPS servers based on provided port arguments."
 
   ;; If the user wants HTTPS, print the guide in case they need to generate certs
@@ -194,39 +194,40 @@
 
   (format t "Initializing M3U server setup...~%")
   (format t "Serving database: ~a~%" input-xlsx)
-
-  ;; --- Route Definitions (Keep your existing routes here) ---
-  ;; (playlist, web-ui, launch-player routes remain exactly the same)
+  (when sheet-name
+    (format t "Using sheet: ~a~%" sheet-name))
 
   ;; --- Route 1: Raw M3U file download endpoint ---
-  (hunchentoot:define-easy-handler (playlist :uri "/playlist.m3u") ()
+  (hunchentoot:define-easy-handler (playlist :uri "/playlist.m3u") (sheet)
     (setf (hunchentoot:content-type*) "audio/x-mpegurl; charset=utf-8")
-    (handler-case
-        (let ((items (m3u-xlsx:read-xlsx-items input-xlsx)))
-          (dolist (item items)
-            (setf (m3u-data:item-uri item)
-                  (m3u-data:transform-uri (m3u-data:item-uri item)
-                                          :strip-proxy strip-proxy
-                                          :server-url server-url)))
-          (items-to-m3u-string items))
-      (error (e)
-        (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
-        (format nil "Error generating playlist: ~a" e))))
+    (let ((effective-sheet (or sheet sheet-name)))
+      (handler-case
+          (let ((items (m3u-xlsx:read-xlsx-items input-xlsx :sheet-name effective-sheet)))
+            (dolist (item items)
+              (setf (m3u-data:item-uri item)
+                    (m3u-data:transform-uri (m3u-data:item-uri item)
+                                            :strip-proxy strip-proxy
+                                            :server-url server-url)))
+            (items-to-m3u-string items))
+        (error (e)
+          (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
+          (format nil "Error generating playlist: ~a" e)))))
 
   ;; --- Route 2: New Web UI player endpoint ---
-  (hunchentoot:define-easy-handler (web-ui :uri "/") ()
+  (hunchentoot:define-easy-handler (web-ui :uri "/") (sheet)
     (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-    (handler-case
-        (let ((items (m3u-xlsx:read-xlsx-items input-xlsx)))
-          (dolist (item items)
-            (setf (m3u-data:item-uri item)
-                  (m3u-data:transform-uri (m3u-data:item-uri item)
-                                          :strip-proxy strip-proxy
-                                          :server-url server-url)))
-          (generate-web-player-html items))
-      (error (e)
-        (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
-        (format nil "<h1>Error reading database: ~a</h1>" e))))
+    (let ((effective-sheet (or sheet sheet-name)))
+      (handler-case
+          (let ((items (m3u-xlsx:read-xlsx-items input-xlsx :sheet-name effective-sheet)))
+            (dolist (item items)
+              (setf (m3u-data:item-uri item)
+                    (m3u-data:transform-uri (m3u-data:item-uri item)
+                                            :strip-proxy strip-proxy
+                                            :server-url server-url)))
+            (generate-web-player-html items))
+        (error (e)
+          (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
+          (format nil "<h1>Error reading database: ~a</h1>" e)))))
 
   ;; --- Route 3: Dynamic Single-Channel M3U Launcher (For Desktop Players) ---
   (hunchentoot:define-easy-handler (launch-player :uri "/launch.m3u") (url title)

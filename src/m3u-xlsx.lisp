@@ -4,7 +4,8 @@
 (defpackage :m3u-xlsx
   (:use :cl)
   (:export :read-xlsx-items
-           :write-xlsx-items))
+           :write-xlsx-items
+           :list-sheet-names))
 
 (in-package :m3u-xlsx)
 
@@ -26,9 +27,10 @@
 
 (defun read-xlsx-items (input-path &key sheet-name)
   "Read an existing Excel file and convert its rows into playlist-item objects.
-   Currently ignores sheet-name to read the active sheet by default."
-  (declare (ignore sheet-name))
-  (let* ((rows (cl-excel:read-file input-path)))
+   If sheet-name is provided, read that specific sheet; otherwise reads the first sheet."
+  (let* ((rows (if sheet-name
+                   (cl-excel:read-file input-path sheet-name)
+                   (cl-excel:read-file input-path))))
     (unless rows (error "Excel file is empty or cannot be read: ~a" input-path))
 
     (let* ((headers (mapcar #'clean-missing-value (first rows)))
@@ -60,8 +62,8 @@
 
 (defun write-xlsx-items (items output-path &key sheet-name)
   "Write a list of playlist-item objects to an XLSX file.
-   It handles dynamic attributes automatically."
-  (declare (ignore sheet-name))
+   It handles dynamic attributes automatically.
+   If sheet-name is provided, write to that sheet; otherwise defaults to 'Channel List'."
   (let ((headers (gather-all-headers items))
         (table-data nil))
 
@@ -84,5 +86,9 @@
         (push (append fixed-cols (nreverse dyn-cols)) table-data)))
 
     ;; Write to Excel (nreverse table-data to restore row order)
-    (cl-excel:write-xlsx (nreverse table-data) output-path :sheet "Channel List")
+    (cl-excel:write-xlsx (nreverse table-data) output-path :sheet (or sheet-name "Channel List"))
     (format t "[SUCCESS] Saved ~a items to ~a.~%" (length items) output-path)))
+
+(defun list-sheet-names (path)
+  "Return a list of sheet names in the XLSX file."
+  (cl-excel:list-sheets path))

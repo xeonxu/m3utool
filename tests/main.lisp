@@ -172,3 +172,155 @@
       Clean up
       (when (probe-file test-file)
         (delete-file test-file)))))
+
+
+;;; ==========================================
+;;; Tests for P0: Multi-Sheet XLSX Support
+;;; ==========================================
+
+(deftest test-multi-sheet-write-and-read
+  (testing "write-xlsx-items with named sheet and read-xlsx-items from that sheet"
+    (let* ((test-file (format nil "~a/test-multi-sheet.xlsx" (uiop:temporary-directory)))
+           (sheet-name "TestSheet")
+           (item1 (make-instance 'm3u-data::playlist-item
+                                 :duration 60
+                                 :title "Sheet Test Channel"
+                                 :uri "http://example.com/sheet-test"))
+           (items (list item1)))
+
+      (setf (gethash "tvg-id" (m3u-data::item-attributes item1)) "sheet-chan-1")
+      (setf (gethash "group-title" (m3u-data::item-attributes item1)) "Testing")
+
+      (m3u-xlsx:write-xlsx-items items test-file :sheet-name sheet-name)
+
+      (let ((loaded (m3u-xlsx:read-xlsx-items test-file :sheet-name sheet-name)))
+        (ok (= 1 (length loaded)) "Should load exactly 1 item from named sheet")
+        (let ((li (first loaded)))
+          (ok (string= "Sheet Test Channel" (m3u-data::item-title li))
+              "Title should be preserved")
+          (ok (string= "http://example.com/sheet-test" (m3u-data::item-uri li))
+              "URI should be preserved")
+          (ok (string= "sheet-chan-1" (gethash "tvg-id" (m3u-data::item-attributes li)))
+              "tvg-id attribute should be preserved")
+          (ok (string= "Testing" (gethash "group-title" (m3u-data::item-attributes li)))
+              "group-title attribute should be preserved")))
+
+      (when (probe-file test-file)
+        (delete-file test-file))))
+
+(deftest test-multi-sheet-backward-compatibility
+  (testing "read-xlsx-items and write-xlsx-items without sheet-name should use defaults"
+    (let* ((test-file (format nil "~a/test-default-sheet.xlsx" (uiop:temporary-directory)))
+           (item1 (make-instance 'm3u-data::playlist-item
+                                 :duration 0
+                                 :title "Default Sheet Item"
+                                 :uri "http://default.com/stream"))
+           (items (list item1)))
+
+      (m3u-xlsx:write-xlsx-items items test-file)
+
+      (let ((loaded (m3u-xlsx:read-xlsx-items test-file)))
+        (ok (= 1 (length loaded)) "Should load exactly 1 item from default sheet")
+        (ok (string= "Default Sheet Item" (m3u-data::item-title (first loaded)))
+            "Default sheet read should work")))
+
+      (when (probe-file test-file)
+        (delete-file test-file))))
+
+(deftest test-list-sheet-names
+  (testing "list-sheet-names should return all sheet names in the XLSX"
+    (let* ((test-file (format nil "~a/test-list-sheets.xlsx" (uiop:temporary-directory)))
+           (items (list (make-instance 'm3u-data::playlist-item
+                                       :title "Sheet1Item"
+                                       :uri "http://s1.com"))))
+
+      (m3u-xlsx:write-xlsx-items items test-file :sheet-name "Beijing")
+      (m3u-xlsx:write-xlsx-items items test-file :sheet-name "Shanghai")
+
+      (let ((sheet-names (m3u-xlsx:list-sheet-names test-file)))
+        (ok (>= (length sheet-names) 1) "Should have at least 1 sheet")
+        (ok (member "Beijing" sheet-names :test #'string=)
+            "Should contain Beijing sheet")
+        (ok (member "Shanghai" sheet-names :test #'string=)
+            "Should contain Shanghai sheet")))
+
+      (when (probe-file test-file)
+        (delete-file test-file))))
+
+;;; ==========================================
+;;; Tests for P1: IP Range Parsing and Scan
+;;; ==========================================
+
+(deftest test-ip-string-to-integer
+  (testing "ip-string-to-integer should correctly convert IP addresses"
+    (ok (= #xEF010101 (m3u-scan:ip-string-to-integer "239.1.1.1"))
+        "239.1.1.1 should convert to correct integer")
+    (ok (= #xC0A80101 (m3u-scan:ip-string-to-integer "192.168.1.1"))
+        "192.168.1.1 should convert to correct integer")
+    (ok (= 0 (m3u-scan:ip-string-to-integer "0.0.0.0"))
+        "0.0.0.0 should be 0")
+    (ok (= #xFFFFFFFF (m3u-scan:ip-string-to-integer "255.255.255.255"))
+        "255.255.255.255 should be max 32-bit integer")))
+
+(deftest test-ip-range-parsing-cidr
+  (testing "parse-ip-range with CIDR notation"
+    (multiple-value-bind (start end count) (m3u-scan:parse-ip-range "239.1.1.0/24")
+      (ok (= start (m3u-scan:ip-string-to-integer "239.1.1.0")) "Network start should be correct")
+      (ok (= end (m3u-scan:ip-string-to-integer "239.1.1.255")) "Broadcast end should be correct")
+      (ok (= count 256) "/24 should contain 256 addresses"))))
+
+(deftest test-ip-range-parsing-range
+  (testing "parse-ip-range with explicit range notation"
+    (multiple-value-bind (start end count) (m3u-scan:parse-ip-range "239.1.1.1-239.1.1.10")
+      (ok (= start (m3u-scan:ip-string-to-integer "239.1.1.1")) "Range start should be correct")
+      (ok (= end (m3u-scan:ip-string-to-integer "239.1.1.10")) "Range end should be correct")
+      (ok (= count 10) "Range should contain 10 addresses"))))
+
+(deftest test-ip-range-parsing-single
+  (testing "parse-ip-range with single IP"
+    (multiple-value-bind (start end count) (m3u-scan:parse-ip-range "239.1.1.100")
+      (ok (= start end) "Single IP start and end should be equal")
+      (ok (= count 1) "Single IP should have count 1"))))
+
+(deftest test-generate-ip-list
+  (testing "generate-ip-list should produce correct list of IP strings"
+    (let ((ips (m3u-scan:generate-ip-list "239.1.1.1-239.1.1.3")))
+      (ok (= 3 (length ips)) "Should generate exactly 3 IPs")
+      (ok (string= "239.1.1.1" (first ips)) "First IP should match")
+      (ok (string= "239.1.1.2" (second ips)) "Second IP should match")
+      (ok (string= "239.1.1.3" (third ips)) "Third IP should match"))))
+
+(deftest test-port-range-parsing
+  (testing "parse-port-range with various formats"
+    (let ((ports (m3u-scan:parse-port-range "5000")))
+      (ok (= 1 (length ports)) "Single port should return list of 1")
+      (ok (= 5000 (first ports)) "Port should be 5000"))
+    (let ((ports (m3u-scan:parse-port-range "5000-5003")))
+      (ok (= 4 (length ports)) "Range 5000-5003 should have 4 ports")
+      (ok (equal '(5000 5001 5002 5003) ports) "Ports should be sequential"))
+    (let ((ports (m3u-scan:parse-port-range "5000,5002,5008")))
+      (ok (= 3 (length ports)) "Comma-separated should have 3 ports")
+      (ok (member 5000 ports) "Should contain 5000")
+      (ok (member 5002 ports) "Should contain 5002")
+      (ok (member 5008 ports) "Should contain 5008"))
+    (let ((ports (m3u-scan:parse-port-range "5000-5001,8000")))
+      (ok (= 3 (length ports)) "Mixed format should produce 3 ports")
+      (ok (member 5000 ports) "Should contain 5000")
+      (ok (member 5001 ports) "Should contain 5001")
+      (ok (member 8000 ports) "Should contain 8000"))))
+
+(deftest test-generate-scan-uris
+  (testing "generate-scan-uris should produce correct URI combinations"
+    (let ((uris (m3u-scan:generate-scan-uris "239.1.1.1-239.1.1.2" "5000" :proto "rtp")))
+      (ok (= 2 (length uris)) "Should generate 2 URIs (2 IPs x 1 port)")
+      (ok (string= "rtp://239.1.1.1:5000" (first uris)) "First URI should match")
+      (ok (string= "rtp://239.1.1.2:5000" (second uris)) "Second URI should match"))
+    (let ((uris (m3u-scan:generate-scan-uris "239.1.1.1" "5000-5001" :proto "udp")))
+      (ok (= 2 (length uris)) "Should generate 2 URIs (1 IP x 2 ports)")
+      (ok (string= "udp://239.1.1.1:5000" (first uris)) "First port should match")
+      (ok (string= "udp://239.1.1.1:5001" (second uris)) "Second port should match"))
+    (let ((uris (m3u-scan:generate-scan-uris "239.1.1.1" "5000"
+                                              :template "http://192.168.1.1:8080/udp/~a:~a")))
+      (ok (= 1 (length uris)) "Custom template should produce 1 URI")
+      (ok (string= "http://192.168.1.1:8080/udp/239.1.1.1:5000" (first uris))
+          "Custom template should generate correct URI")))))
