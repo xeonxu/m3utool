@@ -149,9 +149,17 @@
                      (t
                       (format nil "~a://~a:~d" proto ip port)))))
           (push uri uris))))
-    (format t "[INFO] Generated ~d scan URIs (~d IPs x ~d ports).~%"
-            (length uris) (length ips) (length ports))
-    (nreverse uris)))
+    (let ((result (nreverse uris)))
+      (format t "[INFO] Generated ~d scan URIs (~d IPs x ~d ports).~%"
+              (length result) (length ips) (length ports))
+      (when result
+        (format t "[INFO] Sample URIs:~%")
+        (format t "  [1] ~a~%" (first result))
+        (when (second result)
+          (format t "  [2] ~a~%" (second result)))
+        (when (> (length result) 2)
+          (format t "  [~d] ~a~%" (length result) (car (last result)))))
+      result)))
 
 ;; ==========================================
 ;; SCAN ENGINE
@@ -164,27 +172,44 @@
    Returns two values:
      alive-items: list of playlist-item objects for alive streams
      dead-uris:   list of dead URI strings"
-  (format t "[SCAN] Starting network scan of ~d URIs...~%" (length uris))
-  (format t "[SCAN] Workers: ~d | Timeout: ~ds~%" threads timeout)
+  (let ((total (length uris)))
+    (format t "[SCAN] Starting network scan of ~d URIs...~%" total)
+    (format t "[SCAN] Workers: ~d | Timeout: ~ds~%" threads timeout)
+    (format t "[SCAN] Estimated minimum time: ~d seconds (~d workers x ~ds timeout)~%"
+            (ceiling (/ total threads)) threads timeout)
 
-  ;; Build playlist-item objects for each URI
-  (let* ((items (loop for uri in uris
-                      collect (let ((item (make-instance 'm3u-data:playlist-item)))
-                                (setf (m3u-data:item-uri item) uri
-                                      (m3u-data:item-title item)
-                                      (format nil "Scanned ~a" uri))
-                                item)))
-         (total (length items))
-         ;; Use the battle-tested concurrent filter
-         (alive-items (m3u-check:filter-alive-items items :threads threads :timeout timeout))
-         (dead-uris (loop for item in items
-                          unless (find (m3u-data:item-uri item) alive-items
-                                       :key #'m3u-data:item-uri :test #'string=)
-                            collect (m3u-data:item-uri item))))
+    ;; Build playlist-item objects for each URI
+    (let* ((items (loop for uri in uris
+                        collect (let ((item (make-instance 'm3u-data:playlist-item)))
+                                  (setf (m3u-data:item-uri item) uri
+                                        (m3u-data:item-title item)
+                                        (format nil "Scanned ~a" uri))
+                                  item)))
+           ;; Use the battle-tested concurrent filter
+           (alive-items (m3u-check:filter-alive-items items :threads threads :timeout timeout))
+           (dead-uris (loop for item in items
+                            unless (find (m3u-data:item-uri item) alive-items
+                                         :key #'m3u-data:item-uri :test #'string=)
+                              collect (m3u-data:item-uri item))))
 
-    (format t "[SCAN] Complete: ~d alive / ~d dead / ~d total~%"
-            (length alive-items) (length dead-uris) total)
-    (values alive-items dead-uris)))
+      (format t "[SCAN] Complete: ~d alive / ~d dead / ~d total~%"
+              (length alive-items) (length dead-uris) total)
+
+      ;; Print sample dead URIs for debugging (up to 5)
+      (when (and dead-uris (> (length dead-uris) 0))
+        (format t "[SCAN] Sample dead URIs (first ~d):~%"
+                (min 5 (length dead-uris)))
+        (loop for uri in (subseq dead-uris 0 (min 5 (length dead-uris)))
+              for i from 1
+              do (format t "  [~d] ~a~%" i uri)))
+
+      ;; Print all alive URIs
+      (when alive-items
+        (format t "[SCAN] Alive URIs:~%")
+        (dolist (item alive-items)
+          (format t "  ~a~%" (m3u-data:item-uri item))))
+
+      (values alive-items dead-uris))))
 
 ;; ==========================================
 ;; SCAN-AND-SAVE CONVENIENCE
