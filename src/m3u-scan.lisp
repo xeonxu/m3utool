@@ -48,33 +48,35 @@
      Single IP:  '239.1.1.1'
 
    Returns (values start-ip-integer end-ip-integer count)."
-  (cond
+  (block nil
     ;; CIDR notation: 239.1.1.0/24
-    ((cl-ppcre:register-groups-bind (ip-str prefix-str)
-         ("^([0-9\\.]+)/([0-9]+)$" range-str)
-       (let* ((prefix (parse-integer prefix-str))
-              (ip-int (ip-string-to-integer ip-str))
-              (mask (1- (ash 1 (- 32 prefix))))
-              (network (logand ip-int (lognot mask)))
-              (start network)
-              (end (logior network mask)))
-         (values start end (1+ (- end start))))))
+    (cl-ppcre:register-groups-bind (ip-str prefix-str)
+        ("^([0-9\\.]+)/([0-9]+)$" range-str)
+      (let* ((prefix (parse-integer prefix-str))
+             (ip-int (ip-string-to-integer ip-str))
+             (mask (1- (ash 1 (- 32 prefix))))
+             (network (logand ip-int (lognot mask)))
+             (start network)
+             (end (logior network mask)))
+        (return (values start end (1+ (- end start))))))
 
     ;; Range notation: 239.1.1.1-239.1.1.254
-    ((cl-ppcre:register-groups-bind (start-str end-str)
-         ("^([0-9\\.]+)-([0-9\\.]+)$" range-str)
-       (let ((start (ip-string-to-integer start-str))
-             (end (ip-string-to-integer end-str)))
-         (when (> start end)
-           (error "Start IP (~a) is greater than end IP (~a)" start-str end-str))
-         (values start end (1+ (- end start))))))
+    (cl-ppcre:register-groups-bind (start-str end-str)
+        ("^([0-9\\.]+)-([0-9\\.]+)$" range-str)
+      (let ((start (ip-string-to-integer start-str))
+            (end (ip-string-to-integer end-str)))
+        (when (> start end)
+          (error "Start IP (~a) is greater than end IP (~a)" start-str end-str))
+        (return (values start end (1+ (- end start))))))
 
     ;; Single IP: 239.1.1.1
-    ((cl-ppcre:scan "^[0-9\\.]+$" range-str)
-     (let ((ip (ip-string-to-integer range-str)))
-       (values ip ip 1)))
+    (cl-ppcre:register-groups-bind (ip-str)
+        ("^([0-9\\.]+)$" range-str)
+      (let ((ip (ip-string-to-integer ip-str)))
+        (return (values ip ip 1))))
 
-    (t (error "Invalid IP range format: ~a. Use CIDR (239.1.0.0/16), range (239.1.1.1-239.1.1.254), or single IP." range-str))))
+    ;; No match
+    (error "Invalid IP range format: ~a. Use CIDR (239.1.0.0/16), range (239.1.1.1-239.1.1.254), or single IP." range-str)))
 
 (defun generate-ip-list (range-str &key (max-count 65536))
   "Generate a list of IP address strings from a range specification.
