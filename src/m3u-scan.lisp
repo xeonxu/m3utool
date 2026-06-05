@@ -103,29 +103,37 @@
   (let ((ports nil))
     (dolist (segment (str:split "," port-str))
       (setf segment (string-trim " " segment))
-      (if (cl-ppcre:register-groups-bind (start-str end-str)
-              ("^([0-9]+)-([0-9]+)$" segment)
-            (let ((start (parse-integer start-str))
-                  (end (parse-integer end-str)))
-              (when (> start end)
-                (error "Start port (~d) is greater than end port (~d)" start end))
-              (loop for p from start to end do (push p ports))))
-          (push (parse-integer segment) ports)))
+      (block nil
+        ;; Try range pattern: 5000-5010
+        (cl-ppcre:register-groups-bind (start-str end-str)
+            ("^([0-9]+)-([0-9]+)$" segment)
+          (let ((start (parse-integer start-str))
+                (end (parse-integer end-str)))
+            (when (> start end)
+              (error "Start port (~d) is greater than end port (~d)" start end))
+            (loop for p from start to end do (push p ports)))
+          (return))
+        ;; Not a range, treat as single port
+        (push (parse-integer segment) ports)))
     (nreverse (remove-duplicates ports :from-end t))))
 
 ;; ==========================================
 ;; URI GENERATION
 ;; ==========================================
 
-(defun generate-scan-uris (ip-spec port-spec &key (proto "rtp") template)
+(defun generate-scan-uris (ip-spec port-spec &key (proto "rtp") template proxy-url)
   "Generate a list of URIs by combining IPs and ports.
 
    ip-spec:    IP range string (CIDR, range, or single)
    port-spec:  Port range string (single, range, comma-separated)
-   proto:      Protocol: 'rtp', 'udp', or 'http'
+   proto:      Protocol: 'rtp', 'udp', or 'http' (used when template and proxy-url are NIL)
    template:   Custom format string. Use ~a for IP, ~a for port.
-               Example: 'http://~a:8080/udp/~a:5000'
-               When NIL, uses '{proto}://{ip}:{port}'
+               Example: 'http://192.168.0.5:8080/udp/~a:5000'
+   proxy-url:  Proxy base URL for multicast-to-unicast conversion.
+               The IP:port pair is appended to this URL.
+               Example: 'http://192.168.0.5:7088/udp/' produces
+               'http://192.168.0.5:7088/udp/239.1.1.1:5000'
+               When both template and proxy-url are set, template takes precedence.
 
    Returns a list of URI strings."
   (let* ((ips (generate-ip-list ip-spec))
@@ -133,9 +141,13 @@
          (uris nil))
     (dolist (ip ips)
       (dolist (port ports)
-        (let ((uri (if template
-                       (format nil template ip port)
-                       (format nil "~a://~a:~d" proto ip port))))
+        (let ((uri (cond
+                     (template
+                      (format nil template ip port))
+                     (proxy-url
+                      (format nil "~a~a:~d" proxy-url ip port))
+                     (t
+                      (format nil "~a://~a:~d" proto ip port)))))
           (push uri uris))))
     (format t "[INFO] Generated ~d scan URIs (~d IPs x ~d ports).~%"
             (length uris) (length ips) (length ports))
@@ -145,7 +157,7 @@
 ;; SCAN ENGINE
 ;; ==========================================
 
-(defun scan-network (uris &key (threads 20) (timeout 3))
+(defun scan-network (uris &key (threads 2) (timeout 5))
   "Scan a list of URIs for alive streams using concurrent HTTP checks.
    Reuses the battle-tested m3u-check:filter-alive-items engine.
 
@@ -179,21 +191,24 @@
 ;; ==========================================
 
 (defun scan-and-save (ip-spec port-spec output-path
-                      &key (proto "rtp") template
-                           (threads 20) (timeout 3)
+                      &key (proto "rtp") template proxy-url
+                           (threads 2) (timeout 5)
                            database-path sheet-name)
   "Scan a network range and save alive items to a file, optionally merging into a database.
 
    Parameters:
      ip-spec, port-spec:  IP range and port range strings
      output-path:         Path for output M3U or XLSX file
-     proto, template:     URI generation parameters
-     threads, timeout:    Scan parameters
+     proto, template:     URI generation parameters (see generate-scan-uris)
+     proxy-url:           Proxy server URL for multicast scanning
+     threads, timeout:    Scan parameters (default: 2 threads, 5s timeout)
      database-path:       If provided, merge results into this XLSX database
      sheet-name:          Target sheet name for merge"
   ;; 1. Generate URIs
   (let ((uris (generate-scan-uris ip-spec port-spec
-                                   :proto proto :template template)))
+                                   :proto proto
+                                   :template template
+                                   :proxy-url proxy-url)))
     ;; 2. Scan
     (multiple-value-bind (alive-items dead-uris)
         (scan-network uris :threads threads :timeout timeout)

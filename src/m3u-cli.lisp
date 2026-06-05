@@ -313,11 +313,15 @@
                         :short-name #\p :long-name "port"
                         :key :port :initial-value "5000")
    (clingon:make-option :string
-                        :description "Protocol: rtp, udp, or http"
+                        :description "Protocol: rtp, udp, or http (used when --proxy not set)"
                         :long-name "proto"
                         :key :proto :initial-value "rtp")
    (clingon:make-option :string
-                        :description "Custom URI template (use ~a for IP, ~a for port)"
+                        :description "Proxy server URL for multicast-to-unicast conversion (e.g., http://192.168.0.5:7088/udp/). The IP:port is appended to this URL."
+                        :short-name #\P :long-name "proxy"
+                        :key :proxy)
+   (clingon:make-option :string
+                        :description "Custom URI template (use ~a for IP, ~a for port). Takes precedence over --proxy."
                         :long-name "template"
                         :key :template)
    (clingon:make-option :string
@@ -333,13 +337,13 @@
                         :short-name #\s :long-name "sheet"
                         :key :sheet)
    (clingon:make-option :integer
-                        :description "Connection timeout in seconds"
+                        :description "Connection timeout in seconds (default: 5)"
                         :short-name #\t :long-name "timeout"
-                        :key :timeout :initial-value 3)
+                        :key :timeout :initial-value 5)
    (clingon:make-option :integer
-                        :description "Number of concurrent workers"
+                        :description "Number of concurrent workers (default: 2)"
                         :short-name #\w :long-name "workers"
-                        :key :workers :initial-value 20)))
+                        :key :workers :initial-value 2)))
 
 ;; --- Define scan handler ---
 (defun scan/handler (cmd)
@@ -348,6 +352,7 @@
         (end-ip (clingon:getopt cmd :end-ip))
         (port (clingon:getopt cmd :port))
         (proto (clingon:getopt cmd :proto))
+        (proxy-url (clingon:getopt cmd :proxy))
         (template (clingon:getopt cmd :template))
         (output (clingon:getopt cmd :output))
         (db (clingon:getopt cmd :db))
@@ -365,17 +370,22 @@
                        (format t "Error: You must provide --range, --start-ip/--end-ip, or --start-ip alone.~%")
                        (clingon:exit 1))))))
       (format t "Scan Configuration:~%")
-      (format t "  IP range: ~a~%" ip-spec)
-      (format t "  Port(s):  ~a~%" port)
-      (format t "  Protocol: ~a~%" proto)
-      (format t "  Timeout:  ~ds | Workers: ~d~%" timeout workers)
-      (format t "  Output:   ~a~%" output)
-      (when db (format t "  Merge DB: ~a (sheet: ~a)~%" db (or sheet "default")))
+      (format t "  IP range:  ~a~%" ip-spec)
+      (format t "  Port(s):   ~a~%" port)
+      (format t "  Protocol:  ~a~%" proto)
+      (when proxy-url
+        (format t "  Proxy:     ~a~%" proxy-url))
+      (when template
+        (format t "  Template:  ~a~%" template))
+      (format t "  Timeout:   ~ds | Workers: ~d~%" timeout workers)
+      (format t "  Output:    ~a~%" output)
+      (when db (format t "  Merge DB:  ~a (sheet: ~a)~%" db (or sheet "default")))
       (format t "~%")
 
       ;; 2. Run scan
       (m3u-scan:scan-and-save ip-spec port output
                                :proto proto
+                               :proxy-url proxy-url
                                :template template
                                :threads workers
                                :timeout timeout
@@ -388,9 +398,10 @@
    :name "scan"
    :description "Scan IP address ranges for available channels (multicast and unicast)"
    :usage "-r <cidr> -p <port> --proto <rtp|udp|http> -o <output> [options]"
-   :examples '(("Scan multicast range" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -o scan.xlsx")
-               ("Scan and merge to DB" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -o scan.m3u -d core.xlsx -s Shanghai")
-               ("Scan IP range with template" . "m3utool scan --start-ip 192.168.1.1 --end-ip 192.168.1.254 -p 8080 --proto http --template 'http://~a:~a/udp/239.1.1.1:5000' -o scan.xlsx"))
+   :examples '(("Scan multicast via proxy" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -P http://192.168.0.5:7088/udp/ -o scan.xlsx")
+               ("Scan and merge to DB" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://192.168.0.5:7088/udp/ -o scan.m3u -d core.xlsx -s Shanghai")
+               ("Scan HTTP range with template" . "m3utool scan --start-ip 192.168.1.1 --end-ip 192.168.1.254 -p 8080 --proto http --template 'http://~a:~a/stream' -o scan.xlsx")
+               ("Scan with custom timeout and workers" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://proxy:7088/udp/ -t 10 -w 4 -o scan.m3u"))
    :options (scan/options)
    :handler #'scan/handler))
 

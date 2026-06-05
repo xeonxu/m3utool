@@ -324,3 +324,21 @@
       (ok (= 1 (length uris)) "Custom template should produce 1 URI")
       (ok (string= "http://192.168.1.1:8080/udp/239.1.1.1:5000" (first uris))
           "Custom template should generate correct URI")))))
+
+(deftest test-generate-scan-uris-with-proxy
+  (testing "generate-scan-uris with proxy-url should append IP:port to proxy base URL"
+    (let ((uris (m3u-scan:generate-scan-uris "239.1.1.1-239.1.1.2" "5000"
+                                              :proxy-url "http://192.168.0.5:7088/udp/")))
+      (ok (= 2 (length uris)) "Should generate 2 URIs (2 IPs x 1 port)")
+      (ok (string= "http://192.168.0.5:7088/udp/239.1.1.1:5000" (first uris))
+          "First URI should use proxy URL")
+      (ok (string= "http://192.168.0.5:7088/udp/239.1.1.2:5000" (second uris))
+          "Second URI should use proxy URL"))
+    ;; Proxy with trailing slash already included
+    (let ((uris (m3u-scan:generate-scan-uris "239.1.1.1" "5000"
+                                              :proxy-url "http://10.0.0.1:8080/rtp/")))
+      (ok (= 1 (length uris)) "Single IP with proxy should generate 1 URI")
+      (ok (string= "http://10.0.0.1:8080/rtp/239.1.1.1:5000" (first uris))
+          "Proxy URL should be prepended correctly"))))
+
+
