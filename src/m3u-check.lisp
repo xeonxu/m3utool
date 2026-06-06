@@ -9,9 +9,13 @@
   "Check if a URI carries a live stream.
 
    For HTTP/HTTPS URIs:
-     Sends a GET request. If STREAM-CHECK-P is T (default), reads up to
-     8KB of response body to confirm the proxy is actually sending stream
-     data, not just returning an empty HTTP 200 wrapper.
+     Opens a raw TCP socket, sends a minimal HTTP GET request, and reads
+     the response directly. This bypasses HTTP client libraries that would
+     reject non-2xx status codes — many multicast proxies return 400 or
+     other non-2xx codes but still deliver stream data.
+
+     If STREAM-CHECK-P is T (default), reads up to 8KB of response body
+     after the HTTP headers to confirm actual data is flowing.
 
    For non-HTTP URIs (rtp://, udp://): always returns T (assumed alive).
 
@@ -19,41 +23,78 @@
   (unless (or (uiop:string-prefix-p "http://" uri)
               (uiop:string-prefix-p "https://" uri))
     (return-from check-uri-alive-p t))
-  ;; HTTP/HTTPS: send GET and check response
-  (handler-case
-      (let* ((http-stream (dex:request uri
-                                       :method :get
-                                       :want-stream t
-                                       :connect-timeout timeout
-                                       :read-timeout timeout
-                                       :keep-alive nil))
-             (alive nil))
-        (unwind-protect
-             (if stream-check-p
-                 ;; Read body data to confirm real stream liveness
-                 (let* ((buf-size (if (integerp stream-check-p) stream-check-p 8192))
-                        (buf (make-array buf-size :element-type '(unsigned-byte 8)))
-                        (bytes-read 0))
-                   (handler-case
-                       (setf bytes-read (read-sequence buf http-stream))
-                     (end-of-file () (setf bytes-read 0))
-                     (error () (setf bytes-read 0)))
-                   (setf alive (> bytes-read 0))
-                   (when verbose
-                     (format t "[CHECK] ~a -> read ~d bytes -> ~a~%"
-                             uri bytes-read (if alive "ALIVE" "DEAD (no data)"))))
-                 ;; Header-only check
+
+  (flet ((parse-url (url)
+           "Extract host, port, and path from an HTTP URL."
+           (let* ((no-scheme (if (uiop:string-prefix-p "https://" url)
+                                (subseq url 8)
+                                (subseq url 7)))
+                  (slash-pos (position #\/ no-scheme))
+                  (host-port (if slash-pos
+                                (subseq no-scheme 0 slash-pos)
+                                no-scheme))
+                  (path (if slash-pos
+                           (subseq no-scheme slash-pos)
+                           "/"))
+                  (colon-pos (position #\: host-port))
+                  (host (if colon-pos
+                           (subseq host-port 0 colon-pos)
+                           host-port))
+                  (port (if colon-pos
+                           (parse-integer (subseq host-port (1+ colon-pos)))
+                           80)))
+             (values host port path))))
+    (multiple-value-bind (host port path) (parse-url uri)
+      (handler-case
+          (let* ((socket (usocket:socket-connect host port
+                                                 :timeout timeout
+                                                 :element-type 'character))
+                 (stream (usocket:socket-stream socket))
+                 (request (format nil
+                                  "GET ~a HTTP/1.0~%Host: ~a~%~%"
+                                  path host))
+                 (alive nil)
+                 (status-line ""))
+            (unwind-protect
                  (progn
-                   (setf alive t)
-                   (when verbose
-                     (format t "[CHECK] ~a -> connected -> ALIVE (header-only)~%" uri))))
-          (when http-stream
-            (ignore-errors (close http-stream))))
-        alive)
-    (error (e)
-      (when verbose
-        (format t "[CHECK] ~a -> ERROR: ~a~%" uri e))
-      nil)))
+                   ;; Send minimal HTTP request
+                   (write-string request stream)
+                   (force-output stream)
+                   ;; Skip headers: read until empty line (CRLF alone)
+                   (loop for line = (read-line stream nil nil)
+                         while (and line (not (string= line "")))
+                         do (when (uiop:string-prefix-p "HTTP/" line)
+                              (setf status-line line)))
+                   ;; Read body data to confirm stream liveness
+                   (if stream-check-p
+                       (let* ((buf-size (if (integerp stream-check-p) stream-check-p 8192))
+                              (buf (make-array buf-size :element-type '(unsigned-byte 8)))
+                              (bytes-read 0))
+                         ;; Switch to binary for body reading
+                         (let ((binary-stream (flexi-streams:make-flexi-stream
+                                               stream :element-type '(unsigned-byte 8))))
+                           (handler-case
+                               (setf bytes-read (read-sequence buf binary-stream))
+                             (end-of-file () (setf bytes-read 0))
+                             (error () (setf bytes-read 0))))
+                         (setf alive (> bytes-read 0))
+                         (when verbose
+                           (format t "[CHECK] ~a -> ~a, read ~d bytes -> ~a~%"
+                                   uri (string-trim '(#\Return #\Newline) status-line)
+                                   bytes-read (if alive "ALIVE" "DEAD (no data)"))))
+                       ;; Header-only check: connection succeeded
+                       (progn
+                         (setf alive t)
+                         (when verbose
+                           (format t "[CHECK] ~a -> ~a -> ALIVE (header-only)~%"
+                                   uri (string-trim '(#\Return #\Newline) status-line))))))
+              (ignore-errors (usocket:socket-close socket)))
+            alive)
+        ;; Connection/timeout/other errors
+        (error (e)
+          (when verbose
+            (format t "[CHECK] ~a -> ERROR: ~a~%" uri e))
+          nil)))))
 
 (defun filter-alive-items (items &key (threads 20) (timeout 3)
                                          (stream-check-p t) verbose)
