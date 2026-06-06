@@ -36,11 +36,12 @@
                   (path (if slash-pos (subseq no-scheme slash-pos) "/"))
                   (colon-pos (position #\: host-port))
                   (host (if colon-pos (subseq host-port 0 colon-pos) host-port))
+                  (default-port (if (uiop:string-prefix-p "https://" url) 443 80))
                   (port (if colon-pos
                            (parse-integer (subseq host-port (1+ colon-pos)))
-                           80)))
+                           default-port)))
              (values host port path)))
-         (read-crlf-line (socket)
+         (read-crlf-line (stream socket)
            "Read one CRLF-terminated line from socket as string.
             Uses wait-for-input with timeout. Returns NIL on timeout/EOF."
            (let ((bytes (make-array 64 :element-type '(unsigned-byte 8)
@@ -48,7 +49,7 @@
              (loop
                (unless (usocket:wait-for-input socket :timeout timeout)
                  (return-from read-crlf-line nil))
-               (let ((b (handler-case (read-byte socket)
+               (let ((b (handler-case (read-byte stream)
                           (end-of-file () (return-from read-crlf-line nil))
                           (error () (return-from read-crlf-line nil)))))
                  (vector-push-extend b bytes)
@@ -66,6 +67,7 @@
           (let* ((socket (usocket:socket-connect host port
                                                  :timeout timeout
                                                  :element-type '(unsigned-byte 8)))
+                 (stream (usocket:socket-stream socket))
                  ;; Build HTTP/1.0 request with proper CRLF (\r\n) endings
                  (request (format nil
                                   "GET ~a HTTP/1.0\r\nHost: ~a\r\nUser-Agent: m3utool\r\nConnection: close\r\n\r\n"
@@ -76,10 +78,10 @@
             (unwind-protect
                  (progn
                    ;; Send HTTP request as binary
-                   (write-sequence request-bytes socket)
-                   (force-output socket)
+                   (write-sequence request-bytes stream)
+                   (force-output stream)
                    ;; Read headers line by line (CRLF-terminated)
-                   (loop for line = (read-crlf-line socket)
+                   (loop for line = (read-crlf-line stream socket)
                          while (and line (not (string= line "")))
                          do (when (and (> (length line) 5)
                                       (string= (subseq line 0 5) "HTTP/"))
@@ -91,7 +93,7 @@
                               (bytes-read 0))
                          (when (usocket:wait-for-input socket :timeout timeout)
                            (handler-case
-                               (setf bytes-read (read-sequence buf socket))
+                               (setf bytes-read (read-sequence buf stream))
                              (end-of-file () (setf bytes-read 0))
                              (error () (setf bytes-read 0))))
                          (setf alive (> bytes-read 0))
