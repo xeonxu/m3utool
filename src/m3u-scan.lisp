@@ -165,9 +165,13 @@
 ;; SCAN ENGINE
 ;; ==========================================
 
-(defun scan-network (uris &key (threads 2) (timeout 5))
+(defun scan-network (uris &key (threads 2) (timeout 5)
+                          stream-check-p verbose)
   "Scan a list of URIs for alive streams using concurrent HTTP checks.
-   Reuses the battle-tested m3u-check:filter-alive-items engine.
+
+   STREAM-CHECK-P: passed to check-uri-alive-p. T by default, reads up to
+     8KB of response body to confirm stream data is really flowing.
+   VERBOSE: when T, prints per-URI HTTP status details.
 
    Returns two values:
      alive-items: list of playlist-item objects for alive streams
@@ -185,8 +189,12 @@
                                         (m3u-data:item-title item)
                                         (format nil "Scanned ~a" uri))
                                   item)))
-           ;; Use the battle-tested concurrent filter
-           (alive-items (m3u-check:filter-alive-items items :threads threads :timeout timeout))
+           ;; Use the concurrent filter with stream checking
+           (alive-items (m3u-check:filter-alive-items items
+                          :threads threads
+                          :timeout timeout
+                          :stream-check-p stream-check-p
+                          :verbose verbose))
            (dead-uris (loop for item in items
                             unless (find (m3u-data:item-uri item) alive-items
                                          :key #'m3u-data:item-uri :test #'string=)
@@ -218,6 +226,7 @@
 (defun scan-and-save (ip-spec port-spec output-path
                       &key (proto "rtp") template proxy-url
                            (threads 2) (timeout 5)
+                           stream-check-p verbose
                            database-path sheet-name)
   "Scan a network range and save alive items to a file, optionally merging into a database.
 
@@ -236,7 +245,9 @@
                                    :proxy-url proxy-url)))
     ;; 2. Scan
     (multiple-value-bind (alive-items dead-uris)
-        (scan-network uris :threads threads :timeout timeout)
+        (scan-network uris :threads threads :timeout timeout
+                            :stream-check-p stream-check-p
+                            :verbose verbose)
 
       (declare (ignore dead-uris))
 

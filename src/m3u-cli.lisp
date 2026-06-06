@@ -343,7 +343,15 @@
    (clingon:make-option :integer
                         :description "Number of concurrent workers (default: 2)"
                         :short-name #\w :long-name "workers"
-                        :key :workers :initial-value 2)))
+                        :key :workers :initial-value 2)
+   (clingon:make-option :boolean/true
+                        :description "Disable stream data check (header-only check, faster but less reliable)"
+                        :long-name "no-stream-check"
+                        :key :no-stream-check)
+   (clingon:make-option :boolean/true
+                        :description "Verbose output: print HTTP status for each scanned URI"
+                        :short-name #\v :long-name "verbose"
+                        :key :verbose)))
 
 ;; --- Define scan handler ---
 (defun scan/handler (cmd)
@@ -358,7 +366,9 @@
         (db (clingon:getopt cmd :db))
         (sheet (clingon:getopt cmd :sheet))
         (timeout (clingon:getopt cmd :timeout))
-        (workers (clingon:getopt cmd :workers)))
+        (workers (clingon:getopt cmd :workers))
+        (no-stream-check (clingon:getopt cmd :no-stream-check))
+        (verbose (clingon:getopt cmd :verbose)))
 
     ;; 1. Construct IP range spec
     (let ((ip-spec
@@ -370,16 +380,18 @@
                        (format t "Error: You must provide --range, --start-ip/--end-ip, or --start-ip alone.~%")
                        (clingon:exit 1))))))
       (format t "Scan Configuration:~%")
-      (format t "  IP range:  ~a~%" ip-spec)
-      (format t "  Port(s):   ~a~%" port)
-      (format t "  Protocol:  ~a~%" proto)
+      (format t "  IP range:     ~a~%" ip-spec)
+      (format t "  Port(s):      ~a~%" port)
+      (format t "  Protocol:     ~a~%" proto)
       (when proxy-url
-        (format t "  Proxy:     ~a~%" proxy-url))
+        (format t "  Proxy:        ~a~%" proxy-url))
       (when template
-        (format t "  Template:  ~a~%" template))
-      (format t "  Timeout:   ~ds | Workers: ~d~%" timeout workers)
-      (format t "  Output:    ~a~%" output)
-      (when db (format t "  Merge DB:  ~a (sheet: ~a)~%" db (or sheet "default")))
+        (format t "  Template:     ~a~%" template))
+      (format t "  Timeout:      ~ds | Workers: ~d~%" timeout workers)
+      (format t "  Stream check: ~a~%" (if no-stream-check "disabled (header-only)" "enabled (8KB read)"))
+      (format t "  Verbose:      ~a~%" (if verbose "yes" "no"))
+      (format t "  Output:       ~a~%" output)
+      (when db (format t "  Merge DB:     ~a (sheet: ~a)~%" db (or sheet "default")))
       (format t "~%")
 
       ;; 2. Run scan
@@ -389,6 +401,8 @@
                                :template template
                                :threads workers
                                :timeout timeout
+                               :stream-check-p (not no-stream-check)
+                               :verbose verbose
                                :database-path db
                                :sheet-name sheet))))
 
@@ -398,9 +412,9 @@
    :name "scan"
    :description "Scan IP address ranges for available channels (multicast and unicast)"
    :usage "-r <cidr> -p <port> --proto <rtp|udp|http> -o <output> [options]"
-   :examples '(("Scan multicast via proxy" . "m3utool scan -r 239.1.1.0/24 -p 5000 --proto rtp -P http://192.168.0.5:7088/udp/ -o scan.xlsx")
-               ("Scan and merge to DB" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://192.168.0.5:7088/udp/ -o scan.m3u -d core.xlsx -s Shanghai")
-               ("Scan HTTP range with template" . "m3utool scan --start-ip 192.168.1.1 --end-ip 192.168.1.254 -p 8080 --proto http --template 'http://~a:~a/stream' -o scan.xlsx")
+   :examples '(("Scan multicast via proxy" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://192.168.0.5:7088/udp/ -o scan.xlsx")
+               ("Scan with verbose per-URI output" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://192.168.0.5:7088/udp/ -v -o scan.xlsx")
+               ("Scan header-only (fast, less reliable)" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://192.168.0.5:7088/udp/ --no-stream-check -o scan.m3u")
                ("Scan with custom timeout and workers" . "m3utool scan -r 239.1.1.0/24 -p 5000 -P http://proxy:7088/udp/ -t 10 -w 4 -o scan.m3u"))
    :options (scan/options)
    :handler #'scan/handler))
