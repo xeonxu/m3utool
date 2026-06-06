@@ -9,13 +9,13 @@
   "Check if a URI carries a live stream.
 
    For HTTP/HTTPS URIs:
-     Opens a raw TCP socket, sends a minimal HTTP GET request, and reads
-     the response directly. This bypasses HTTP client libraries that would
-     reject non-2xx status codes — many multicast proxies return 400 or
-     other non-2xx codes but still deliver stream data.
+     Opens a raw TCP socket, sends a minimal HTTP/1.0 GET request with
+     proper CRLF line endings, and reads the response directly as binary.
+     This bypasses HTTP client libraries that would reject non-2xx status
+     codes — many multicast proxies return 400 but still stream data.
 
-     If STREAM-CHECK-P is T (default), reads up to 8KB of response body
-     after the HTTP headers to confirm actual data is flowing.
+     Uses usocket:wait-for-input with timeout before every read to avoid
+     hanging on unresponsive proxies.
 
    For non-HTTP URIs (rtp://, udp://): always returns T (assumed alive).
 
@@ -33,61 +33,78 @@
                   (host-port (if slash-pos
                                 (subseq no-scheme 0 slash-pos)
                                 no-scheme))
-                  (path (if slash-pos
-                           (subseq no-scheme slash-pos)
-                           "/"))
+                  (path (if slash-pos (subseq no-scheme slash-pos) "/"))
                   (colon-pos (position #\: host-port))
-                  (host (if colon-pos
-                           (subseq host-port 0 colon-pos)
-                           host-port))
+                  (host (if colon-pos (subseq host-port 0 colon-pos) host-port))
                   (port (if colon-pos
                            (parse-integer (subseq host-port (1+ colon-pos)))
                            80)))
-             (values host port path))))
+             (values host port path)))
+         (read-crlf-line (socket)
+           "Read one CRLF-terminated line from socket as string.
+            Uses wait-for-input with timeout. Returns NIL on timeout/EOF."
+           (let ((bytes (make-array 64 :element-type '(unsigned-byte 8)
+                                       :fill-pointer 0 :adjustable t)))
+             (loop
+               (unless (usocket:wait-for-input socket :timeout timeout)
+                 (return-from read-crlf-line nil))
+               (let ((b (handler-case (read-byte socket)
+                          (end-of-file () (return-from read-crlf-line nil))
+                          (error () (return-from read-crlf-line nil)))))
+                 (vector-push-extend b bytes)
+                 (when (and (>= (length bytes) 2)
+                            (= (aref bytes (- (length bytes) 2)) 13) ; CR
+                            (= (aref bytes (- (length bytes) 1)) 10)) ; LF
+                   ;; Remove trailing CRLF and return as string
+                   (setf (fill-pointer bytes) (- (length bytes) 2))
+                   (return-from read-crlf-line
+                     (handler-case
+                         (babel:octets-to-string bytes :encoding :ascii)
+                       (error () "")))))))))
     (multiple-value-bind (host port path) (parse-url uri)
       (handler-case
           (let* ((socket (usocket:socket-connect host port
                                                  :timeout timeout
-                                                 :element-type 'character))
-                 (stream (usocket:socket-stream socket))
+                                                 :element-type '(unsigned-byte 8)))
+                 ;; Build HTTP/1.0 request with proper CRLF (\r\n) endings
                  (request (format nil
-                                  "GET ~a HTTP/1.0~%Host: ~a~%~%"
+                                  "GET ~a HTTP/1.0\r\nHost: ~a\r\nUser-Agent: m3utool\r\nConnection: close\r\n\r\n"
                                   path host))
+                 (request-bytes (babel:string-to-octets request :encoding :ascii))
                  (alive nil)
                  (status-line ""))
             (unwind-protect
                  (progn
-                   ;; Send minimal HTTP request
-                   (write-string request stream)
-                   (force-output stream)
-                   ;; Skip headers: read until empty line (CRLF alone)
-                   (loop for line = (read-line stream nil nil)
+                   ;; Send HTTP request as binary
+                   (write-sequence request-bytes socket)
+                   (force-output socket)
+                   ;; Read headers line by line (CRLF-terminated)
+                   (loop for line = (read-crlf-line socket)
                          while (and line (not (string= line "")))
-                         do (when (uiop:string-prefix-p "HTTP/" line)
+                         do (when (and (> (length line) 5)
+                                      (string= (subseq line 0 5) "HTTP/"))
                               (setf status-line line)))
                    ;; Read body data to confirm stream liveness
                    (if stream-check-p
                        (let* ((buf-size (if (integerp stream-check-p) stream-check-p 8192))
                               (buf (make-array buf-size :element-type '(unsigned-byte 8)))
                               (bytes-read 0))
-                         ;; Switch to binary for body reading
-                         (let ((binary-stream (flexi-streams:make-flexi-stream
-                                               stream :element-type '(unsigned-byte 8))))
+                         (when (usocket:wait-for-input socket :timeout timeout)
                            (handler-case
-                               (setf bytes-read (read-sequence buf binary-stream))
+                               (setf bytes-read (read-sequence buf socket))
                              (end-of-file () (setf bytes-read 0))
                              (error () (setf bytes-read 0))))
                          (setf alive (> bytes-read 0))
                          (when verbose
                            (format t "[CHECK] ~a -> ~a, read ~d bytes -> ~a~%"
-                                   uri (string-trim '(#\Return #\Newline) status-line)
-                                   bytes-read (if alive "ALIVE" "DEAD (no data)"))))
-                       ;; Header-only check: connection succeeded
+                                   uri status-line bytes-read
+                                   (if alive "ALIVE" "DEAD (no data)"))))
+                       ;; Header-only: connection + headers received = alive
                        (progn
                          (setf alive t)
                          (when verbose
                            (format t "[CHECK] ~a -> ~a -> ALIVE (header-only)~%"
-                                   uri (string-trim '(#\Return #\Newline) status-line))))))
+                                   uri status-line)))))
               (ignore-errors (usocket:socket-close socket)))
             alive)
         ;; Connection/timeout/other errors
