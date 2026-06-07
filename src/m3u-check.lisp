@@ -9,14 +9,12 @@
   "Check if a URI carries a live stream.
 
    For HTTP/HTTPS URIs:
-     Opens a raw TCP socket, sends a minimal HTTP GET request, waits for
-     response data with timeout, then reads whatever is available. This
-     bypasses HTTP client libraries that reject non-2xx status codes
-     — many multicast proxies return 400 but still deliver stream data.
+     Opens a raw TCP socket, sends an HTTP GET request, then reads
+     response data with a deadline-based timeout. This bypasses HTTP
+     client libraries that reject non-2xx status codes — many multicast
+     proxies return 400 but still deliver stream data.
 
-     The response buffer is searched for the CRLF-CRLF header/body
-     boundary. If body data exists beyond the boundary, the stream is
-     considered alive.
+     On SBCL, sb-sys:with-deadline is used to enforce the read timeout.
 
    For non-HTTP URIs (rtp://, udp://): always returns T (assumed alive).
 
@@ -51,24 +49,40 @@
                                   path host))
                  (alive nil)
                  (buf (make-array 65536 :element-type '(unsigned-byte 8)))
-                 (total 0)
-                 (status-line ""))
+                 (total 0))
             (unwind-protect
                  (progn
                    ;; Send HTTP request
                    (write-sequence (babel:string-to-octets request :encoding :ascii) stream)
                    (force-output stream)
-                   ;; Wait for response data (with timeout), then read available data
-                   (when (usocket:wait-for-input socket :timeout timeout)
-                     (handler-case
+                   ;; Read response with deadline-based timeout (SBCL)
+                   (handler-case
+                       #+sbcl
+                       (sb-sys:with-deadline (:seconds timeout)
                          (loop
                            (let ((n (read-sequence buf stream :start total)))
                              (when (zerop n) (return))
                              (incf total n)
-                             (when (>= total (length buf)) (return))))
-                       (end-of-file ())
-                       (t () nil)))
-                   ;; Find header/body boundary in the buffer
+                             (when (>= total (length buf)) (return)))))
+                       #-sbcl
+                       ;; Non-SBCL: poll with wait-for-input as fallback
+                       (progn
+                         (when (usocket:wait-for-input socket :timeout timeout)
+                           (loop
+                             (let ((n (read-sequence buf stream :start total)))
+                               (when (zerop n) (return))
+                               (incf total n)
+                               (when (>= total (length buf)) (return))))))
+                     (sb-sys:deadline-timeout ()
+                       ;; Timeout: keep what we've read so far
+                       nil)
+                     (end-of-file ()
+                       ;; EOF: expected after proxy finishes
+                       nil)
+                     (t ()
+                       ;; Other errors: keep partial data
+                       nil))
+                   ;; Parse response: find header/body boundary
                    (let ((body-start (and (> total 0)
                                          (loop for i from 0 to (- total 4)
                                                when (and (= (aref buf i) 13)
@@ -77,31 +91,33 @@
                                                         (= (aref buf (+ i 3)) 10))
                                                return (+ i 4)))))
                      ;; Extract status line from headers
-                     (when (> total 0)
-                       (setf status-line
-                             (loop for i from 0 below (min total 256)
-                                   when (and (= (aref buf i) 13)
-                                            (= (aref buf (1+ i)) 10))
-                                   return (handler-case
-                                              (babel:octets-to-string buf :start 0 :end i
-                                                                      :encoding :ascii)
-                                            (t () "")))))
-                     ;; Determine liveness based on body data presence
-                     (if stream-check-p
-                         (let ((body-size (if body-start (- total body-start) 0)))
-                           (setf alive (> body-size 0))
-                           (when verbose
-                             (format t "[CHECK] ~a -> ~a, ~d bytes total, ~d bytes body -> ~a~%"
-                                     uri status-line total body-size
-                                     (if alive "ALIVE" "DEAD (no body data)"))))
-                         (progn
-                           (setf alive (and body-start t))
-                           (when verbose
-                             (format t "[CHECK] ~a -> ~a -> ~a~%"
-                                     uri status-line
-                                     (if alive "ALIVE (header-only)" "DEAD (no response)")))))))
+                     (let ((status-line
+                             (if (> total 0)
+                                 (loop for i from 0 below (min total 256)
+                                       when (and (= (aref buf i) 13)
+                                                (= (aref buf (1+ i)) 10))
+                                       return (handler-case
+                                                  (babel:octets-to-string buf :start 0 :end i
+                                                                          :encoding :ascii)
+                                                (t () "")))
+                                 "")))
+                       ;; Determine liveness
+                       (if stream-check-p
+                           (let ((body-size (if body-start (- total body-start) 0)))
+                             (setf alive (> body-size 0))
+                             (when verbose
+                               (format t "[CHECK] ~a -> ~a, ~d bytes total, ~d bytes body -> ~a~%"
+                                       uri status-line total body-size
+                                       (if alive "ALIVE" "DEAD (no body data)"))))
+                           (progn
+                             (setf alive (and body-start t))
+                             (when verbose
+                               (format t "[CHECK] ~a -> ~a -> ~a~%"
+                                       uri status-line
+                                       (if alive "ALIVE (header-only)" "DEAD (no response)"))))))))
               (ignore-errors (usocket:socket-close socket)))
             alive)
+        ;; Connection refused / DNS failure / etc
         (t (err)
           (when verbose
             (format t "[CHECK] ~a -> ERROR: ~a~%" uri err))
@@ -132,7 +148,6 @@
                                          (let ((alive (check-uri-alive-p (m3u-data::item-uri item) timeout
                                                        :stream-check-p stream-check-p
                                                        :verbose verbose)))
-                                           ;; Thread-safe progress printing
                                            (bordeaux-threads:with-lock-held (lock)
                                              (incf checked-count)
                                              (when alive (incf alive-count))
@@ -141,9 +156,7 @@
                                                        checked-count total alive-count)))
                                            (if alive item nil)))
                                        items)))
-         ;; Filter out NILs and convert vector back to list
          (prog1 (remove nil (coerce results 'list))
            (format t "[CHECK] Done: ~d/~d alive~%" alive-count total)))
 
-    ;; Cleanup: Ensure the thread pool is terminated even if errors occur
     (lparallel:end-kernel :wait t)))
