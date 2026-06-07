@@ -106,20 +106,40 @@
                                                                           :encoding :ascii)
                                                 (t () "")))
                                  "")))
-                       ;; Determine liveness
-                       (if stream-check-p
-                           (let ((body-size (if body-start (- total body-start) 0)))
-                             (setf alive (> body-size 0))
-                             (when verbose
-                               (format t "[CHECK] ~a -> ~a, ~d bytes total, ~d bytes body -> ~a~%"
-                                       uri status-line total body-size
-                                       (if alive "ALIVE" "DEAD (no body data)"))))
-                           (progn
-                             (setf alive (and body-start t))
-                             (when verbose
-                               (format t "[CHECK] ~a -> ~a -> ~a~%"
-                                       uri status-line
-                                       (if alive "ALIVE (header-only)" "DEAD (no response)"))))))))
+                                              ;; Determine liveness
+                       ;; HTTP 5xx = server error (stream unavailable) -> DEAD
+                       ;; HTTP 2xx/4xx + body >= 4KB = stream flowing -> ALIVE
+                       ;; Small/no body -> DEAD
+                       (let* ((http-status
+                                (if (> (length status-line) 12)
+                                    (parse-integer status-line
+                                                   :start 9 :end 12
+                                                   :junk-allowed t)
+                                    0))
+                              (server-error-p (and http-status
+                                                 (>= http-status 500)
+                                                 (<= http-status 599)))
+                              (body-size (if body-start (- total body-start) 0))
+                              (min-body 4096))
+                         (if stream-check-p
+                             (progn
+                               (setf alive (and (not server-error-p)
+                                               (>= body-size min-body)))
+                               (when verbose
+                                 (format t "[CHECK] ~a -> ~a, ~d bytes body -> ~a~%"
+                                         uri status-line body-size
+                                         (cond (server-error-p "DEAD (server error)")
+                                               ((>= body-size min-body) "ALIVE")
+                                               ((> body-size 0) "DEAD (body too small)")
+                                               (t "DEAD (no body)")))))
+                             (progn
+                               (setf alive (and body-start t (not server-error-p)))
+                               (when verbose
+                                 (format t "[CHECK] ~a -> ~a -> ~a~%"
+                                         uri status-line
+                                         (if alive "ALIVE (header-only)" "DEAD")))))))
+
+))
               (ignore-errors (usocket:socket-close socket)))
             alive)
         ;; Connection refused / DNS failure / etc
