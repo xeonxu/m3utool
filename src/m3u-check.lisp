@@ -9,70 +9,33 @@
   "Check if a URI carries a live stream.
 
    For HTTP/HTTPS URIs:
-     Opens a raw TCP socket, sends a minimal HTTP GET request, and reads
-     the response in one shot. This bypasses HTTP client libraries that
-     reject non-2xx status codes. Many multicast proxies return 400 but
-     still deliver stream data in the response body.
+     Opens a raw TCP socket, sends a minimal HTTP GET request, waits for
+     response data with timeout, then reads whatever is available. This
+     bypasses HTTP client libraries that reject non-2xx status codes
+     — many multicast proxies return 400 but still deliver stream data.
 
-     The response buffer is searched for the \\r\\n\\r\\n header/body
+     The response buffer is searched for the CRLF-CRLF header/body
      boundary. If body data exists beyond the boundary, the stream is
      considered alive.
 
    For non-HTTP URIs (rtp://, udp://): always returns T (assumed alive).
 
    VERBOSE: when T, prints result for each URI."
-  (labels ((parse-url (url)
-             "Extract host, port, and path from an HTTP URL."
-             (let* ((no-scheme (if (uiop:string-prefix-p "https://" url)
-                                  (subseq url 8)
-                                  (subseq url 7)))
-                    (slash-pos (position #\/ no-scheme))
-                    (host-port (if slash-pos (subseq no-scheme 0 slash-pos) no-scheme))
-                    (path (if slash-pos (subseq no-scheme slash-pos) "/"))
-                    (colon-pos (position #\: host-port))
-                    (host (if colon-pos (subseq host-port 0 colon-pos) host-port))
-                    (default-port (if (uiop:string-prefix-p "https://" url) 443 80))
-                    (port (if colon-pos
-                             (parse-integer (subseq host-port (1+ colon-pos)))
-                             default-port)))
-               (values host port path)))
-           (read-response (stream timeout)
-             "Read available response data from STREAM into a buffer.
-              Returns (values buffer bytes-read) or (values nil 0) on error."
-             (let ((buf (make-array 65536 :element-type '(unsigned-byte 8)))
-                   (total 0))
-               (handler-case
-                   ;; Read in a loop: get whatever is available, up to buffer size
-                   (loop
-                     (let ((n (read-sequence buf stream :start total)))
-                       (when (zerop n) (return))
-                       (incf total n)
-                       (when (>= total (length buf)) (return))))
-                 (end-of-file ()
-                   ;; EOF is expected — proxy closed connection
-                   )
-                 (error ()
-                   ;; Other errors
-                   (setf total 0)))
-               (values buf total)))
-           (find-header-end (buf total)
-             "Find the position of \\r\\n\\r\\n (double CRLF) marking end of headers.
-              Returns the byte position of the first body byte, or NIL if not found."
-             (loop for i from 0 to (- total 4)
-                   when (and (= (aref buf i) 13)      ; CR
-                            (= (aref buf (1+ i)) 10)  ; LF
-                            (= (aref buf (+ i 2)) 13) ; CR
-                            (= (aref buf (+ i 3)) 10)); LF
-                     return (+ i 4))
-             nil)
-           (extract-status-line (buf total)
-             "Extract the HTTP status line from the response buffer."
-             (loop for i from 0 below (min total 256)
-                   when (and (= (aref buf i) 13) (= (aref buf (1+ i)) 10)) ; CRLF
-                     return (handler-case
-                                (babel:octets-to-string buf :start 0 :end i :encoding :ascii)
-                              (error () "")))
-             ""))
+  (flet ((parse-url (url)
+           "Extract host, port, and path from an HTTP URL."
+           (let* ((no-scheme (if (uiop:string-prefix-p "https://" url)
+                                (subseq url 8)
+                                (subseq url 7)))
+                  (slash-pos (position #\/ no-scheme))
+                  (host-port (if slash-pos (subseq no-scheme 0 slash-pos) no-scheme))
+                  (path (if slash-pos (subseq no-scheme slash-pos) "/"))
+                  (colon-pos (position #\: host-port))
+                  (host (if colon-pos (subseq host-port 0 colon-pos) host-port))
+                  (default-port (if (uiop:string-prefix-p "https://" url) 443 80))
+                  (port (if colon-pos
+                           (parse-integer (subseq host-port (1+ colon-pos)))
+                           default-port)))
+             (values host port path))))
     (unless (or (uiop:string-prefix-p "http://" uri)
                 (uiop:string-prefix-p "https://" uri))
       (return-from check-uri-alive-p t))
@@ -86,37 +49,63 @@
                  (request (format nil
                                   "GET ~a HTTP/1.0\r\nHost: ~a\r\nUser-Agent: m3utool\r\nConnection: close\r\n\r\n"
                                   path host))
-                 (alive nil))
+                 (alive nil)
+                 (buf (make-array 65536 :element-type '(unsigned-byte 8)))
+                 (total 0)
+                 (status-line ""))
             (unwind-protect
                  (progn
                    ;; Send HTTP request
                    (write-sequence (babel:string-to-octets request :encoding :ascii) stream)
                    (force-output stream)
-                   ;; Read response in one shot: headers + any available body data
-                   (multiple-value-bind (buf total) (read-response stream timeout)
-                     (let ((body-start (and (> total 0) (find-header-end buf total)))
-                           (status-line (if (> total 0) (extract-status-line buf total) "")))
-                       (if stream-check-p
-                           ;; Stream check: alive if body data exists after headers
-                           (let ((body-size (if body-start (- total body-start) 0)))
-                             (setf alive (> body-size 0))
-                             (when verbose
-                               (format t "[CHECK] ~a -> ~a, ~d bytes headers+body, ~d bytes body -> ~a~%"
-                                       uri status-line total body-size
-                                       (if alive "ALIVE" "DEAD (no body data)"))))
-                           ;; Header-only check
-                           (progn
-                             (setf alive (and body-start t))
-                             (when verbose
-                               (format t "[CHECK] ~a -> ~a -> ~a~%"
-                                       uri status-line
-                                       (if alive "ALIVE (header-only)" "DEAD (no response)")))))))
+                   ;; Wait for response data (with timeout), then read available data
+                   (when (usocket:wait-for-input socket :timeout timeout)
+                     (handler-case
+                         (loop
+                           (let ((n (read-sequence buf stream :start total)))
+                             (when (zerop n) (return))
+                             (incf total n)
+                             (when (>= total (length buf)) (return))))
+                       (end-of-file ())
+                       (t () nil)))
+                   ;; Find header/body boundary in the buffer
+                   (let ((body-start (and (> total 0)
+                                         (loop for i from 0 to (- total 4)
+                                               when (and (= (aref buf i) 13)
+                                                        (= (aref buf (1+ i)) 10)
+                                                        (= (aref buf (+ i 2)) 13)
+                                                        (= (aref buf (+ i 3)) 10))
+                                               return (+ i 4)))))
+                     ;; Extract status line from headers
+                     (when (> total 0)
+                       (setf status-line
+                             (loop for i from 0 below (min total 256)
+                                   when (and (= (aref buf i) 13)
+                                            (= (aref buf (1+ i)) 10))
+                                   return (handler-case
+                                              (babel:octets-to-string buf :start 0 :end i
+                                                                      :encoding :ascii)
+                                            (t () "")))))
+                     ;; Determine liveness based on body data presence
+                     (if stream-check-p
+                         (let ((body-size (if body-start (- total body-start) 0)))
+                           (setf alive (> body-size 0))
+                           (when verbose
+                             (format t "[CHECK] ~a -> ~a, ~d bytes total, ~d bytes body -> ~a~%"
+                                     uri status-line total body-size
+                                     (if alive "ALIVE" "DEAD (no body data)"))))
+                         (progn
+                           (setf alive (and body-start t))
+                           (when verbose
+                             (format t "[CHECK] ~a -> ~a -> ~a~%"
+                                     uri status-line
+                                     (if alive "ALIVE (header-only)" "DEAD (no response)")))))))
               (ignore-errors (usocket:socket-close socket)))
             alive)
-        (error (e)
+        (t (err)
           (when verbose
-            (format t "[CHECK] ~a -> ERROR: ~a~%" uri e))
-          nil))))))
+            (format t "[CHECK] ~a -> ERROR: ~a~%" uri err))
+          nil)))))
 
 (defun filter-alive-items (items &key (threads 20) (timeout 3)
                                          (stream-check-p t) verbose)
