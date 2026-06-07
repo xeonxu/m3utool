@@ -1,6 +1,6 @@
 #+TITLE: m3utool - Common Lisp M3U Processing Swiss Army Knife
 #+AUTHOR: Zhiqiang Xu <xeonxu@gmail.com>
-#+VERSION: 0.5.3
+#+VERSION: 0.5
 
 * 简介
 
