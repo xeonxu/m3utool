@@ -1,0 +1,16 @@
+* DONE Add openwrt target (x86/arm)
+- State "DONE"       from "TODO"       [2026-02-26 Thu 21:31]
+* DONE Add prefix rtp:// to multicast addresses. 
+- State "DONE"       from "TODO"       [2026-02-26 Thu 23:16]
+* DONE Use the latest git tag as the software version automatically.
+- State "DONE"       from "TODO"       [2026-03-09 Mon 20:55]
+* DONE Provide remote debug ability.
+- State "DONE"       from "TODO"       [2026-03-09 Mon 20:55]
+* DONE Suppport multisheets and can convert selected sheet to m3u.
+- State "DONE"       from "TODO"       [2026-06-07 Sun 21:00]
+* TODO Use different sheets to store channels from different areas.
+* TODO EPG and logo store in different sheets for common use.
+* DONE Add Scan subcommand to scan available channels by providing address ranges. Support multicast and unicast.
+- State "DONE"       from "TODO"       [2026-06-07 Sun 21:00]
+* TODO Support to use ffmpeg to fetch video information from channel stream.
+* TODO Try to use stream info hash to identify different channels.

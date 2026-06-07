@@ -1,0 +1,185 @@
+#+TITLE: m3utool - Common Lisp M3U Processing Swiss Army Knife
+#+AUTHOR: Zhiqiang Xu <xeonxu@gmail.com>
+#+VERSION: 0.5.3
+
+* 简介
+
+  m3utool 是一个 IPTV 频道列表管理工具，用 Common Lisp 编写。支持 M3U/XLSX 格式互转、
+  频道数据库合并去重、网络扫描检测、Web 播放服务等功能。
+
+* 安装
+
+** 安装 Roswell
+
+  #+begin_src sh
+  apt update && apt install -y sudo curl make automake autoconf gcc bzip2 git && \
+    (curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | CI=true sh)
+  #+end_src
+
+** 编译
+
+  #+begin_src sh
+  make prepare   # 安装依赖
+  make test      # 运行测试
+  make build     # 编译二进制
+  #+end_src
+
+* 子命令
+
+** convert — 格式转换
+
+  在 M3U 播放列表和 XLSX 电子表格之间互相转换，支持直播源 URI 代理前缀的剥离或重写。
+
+  #+begin_src sh
+  # M3U → XLSX
+  m3utool convert -i in.m3u -o out.xlsx
+
+  # M3U → M3U (添加代理前缀)
+  m3utool convert -i in.m3u -o out.m3u -S http://192.168.1.1:8080/rtp/
+
+  # XLSX → M3U (剥离代理前缀)
+  m3utool convert -i db.xlsx -o clean.m3u -s
+
+  # 指定 Sheet 读写（多 Sheet 支持）
+  m3utool convert -i db.xlsx -o out.m3u --sheet "Shanghai"
+
+  # 列出 XLSX 中所有 Sheet 名称
+  m3utool convert -i db.xlsx --list-sheets
+  #+end_src
+
+** update — 频道数据库更新
+
+  将新扫描的频道数据合并到已有的 XLSX 数据库。以频道名称为主键去重，
+  同一频道的多个备选直播源保存为 uri-2、uri-3 等属性。
+
+  #+begin_src sh
+  # 合并扫描结果到数据库
+  m3utool update -i scan.m3u -d core.xlsx
+
+  # 指定目标 Sheet
+  m3utool update -i scan.m3u -d core.xlsx -s "Shanghai"
+
+  # 指定输入 Sheet
+  m3utool update -i scan.xlsx -d core.xlsx --input-sheet "New"
+  #+end_src
+
+** check — 并发存活检测
+
+  通过 HTTP 请求并发检测直播源是否存活。支持文件输入和 URL 列表输入。
+
+  #+begin_src sh
+  # 检查 M3U 文件中的链接，保存存活项
+  m3utool check -i playlist.m3u -o alive.m3u
+
+  # 检查指定 URL 列表
+  m3utool check -u "http://a.com/1.ts,http://b.com/2.ts" -o alive.m3u
+
+  # 自定义超时和并发数
+  m3utool check -i playlist.m3u -o alive.m3u -t 5 -w 10
+  #+end_src
+
+** scan — IP 地址段扫描
+
+  按 IP 地址范围并发扫描可用频道，支持 CIDR、起止范围、单个 IP 等格式。
+  支持组播转单播代理，自动检测流存活状态。
+
+  #+begin_src sh
+  # 通过代理扫描 CIDR 地址段（最常用）
+  m3utool scan -r 239.1.1.0/24 -p 5000 \
+      -P http://192.168.0.5:7088/udp/ -o scan.xlsx
+
+  # 扫描并直接合并到数据库
+  m3utool scan -r 239.1.1.0/24 -p 5000 \
+      -P http://192.168.0.5:7088/udp/ \
+      -o scan.m3u -d core.xlsx -s Shanghai
+
+  # 扫描 IP 范围
+  m3utool scan --start-ip 239.1.1.1 --end-ip 239.1.1.254 -p 5000-5010 \
+      -P http://proxy:7088/udp/ -o scan.xlsx
+
+  # 自定义超时和并发数，verbose 输出
+  m3utool scan -r 233.18.204.0/24 -p 5140 \
+      -P http://192.168.0.5:7088/udp/ -v -t 10 -w 4 -o scan.m3u
+
+  # 仅检查 HTTP headers（快速但不检测实际流数据）
+  m3utool scan -r 239.1.1.0/24 -p 5000 \
+      -P http://proxy:7088/udp/ --no-stream-check -o scan.m3u
+
+  # 自定义 URI 模板（高级用法）
+  m3utool scan -r 239.1.1.0/24 -p 5000 \
+      --template "http://proxy:8080/udp/~a:~a" -o scan.m3u
+  #+end_src
+
+  Scan 命令选项：
+
+  | 选项                | 说明                                            | 默认值 |
+  |---------------------+-------------------------------------------------+--------|
+  | =-r= / =--range=    | CIDR 地址段                                     | -      |
+  | =--start-ip=        | 起始 IP                                         | -      |
+  | =--end-ip=          | 结束 IP                                         | -      |
+  | =-p= / =--port=     | 端口 (支持范围: 5000-5010, 逗号: 5000,5002)     | 5000   |
+  | =-P= / =--proxy=    | 组播代理 URL                                    | -      |
+  | =--proto=           | 协议 (rtp/udp/http)                             | rtp    |
+  | =--template=        | 自定义 URI 模板                                 | -      |
+  | =-o= / =--output=   | 输出文件 (.m3u / .xlsx)                         | *必填* |
+  | =-d= / =--database= | 合并到已有数据库                                | -      |
+  | =-s= / =--sheet=    | 目标 Sheet 名                                    | -      |
+  | =-t= / =--timeout=  | 连接超时 (秒)                                   | 5      |
+  | =-w= / =--workers=  | 并发数                                           | 2      |
+  | =-v= / =--verbose=  | 输出每个 URI 的检测详情                          | no     |
+  | =--no-stream-check= | 跳过流数据读取 (仅检查 HTTP headers)             | no     |
+
+  Scan 检测逻辑：
+
+  1. 向代理发送 HTTP GET 请求
+  2. 读取响应头和 body 数据
+  3. HTTP 5xx → 判定为 DEAD (服务不可用)
+  4. HTTP 2xx/4xx + body >= 4KB → 判定为 ALIVE (有流数据)
+  5. HTTP 2xx/4xx + body < 4KB → 判定为 DEAD (错误页面非真实流)
+  6. 无响应数据 → 判定为 DEAD
+
+** server — Web 播放服务
+
+  启动 HTTP/HTTPS 服务器，提供动态 M3U 播放列表、Web 播放器界面和外部播放器激活链接。
+
+  #+begin_src sh
+  # 启动 HTTP 服务器 (端口 8080)
+  m3utool server -i core.xlsx -p 8080
+
+  # 启动 HTTP + HTTPS (需要 cert.pem 和 key.pem)
+  m3utool server -i core.xlsx -p 8080 --https-port 8443
+
+  # 指定 Sheet
+  m3utool server -i core.xlsx -p 8080 --sheet "Shanghai"
+
+  # 绑定地址 + URI 代理重写
+  m3utool server -i core.xlsx -b 0.0.0.0 -p 8080 -S http://your-server:8080/udp/
+  #+end_src
+
+  Server 路由：
+  - =/= → Web 播放器界面 (搜索、台标、按分组浏览)
+  - =/playlist.m3u= → 动态 M3U 播放列表 (=?sheet=Shanghai= 切换区域)
+  - =/launch.m3u?url=...&= → 单频道 M3U 启动文件 (调起 VLC/PotPlayer/IINA)
+
+* 全局选项
+
+  | 选项               | 说明                        |
+  |--------------------+-----------------------------|
+  | =--slime-port=     | 启动 Swank 远程调试服务器   |
+  | =--sly-port=       | 启动 Slynk 远程调试服务器   |
+
+* 架构
+
+  | 模块                  | 文件                     | 功能                                |
+  |-----------------------+--------------------------+-------------------------------------|
+  | =m3u-cli=             | src/m3u-cli.lisp         | CLI 入口，命令解析                  |
+  | =m3u-data=            | src/m3u-data.lisp        | 核心数据模型，M3U 解析/生成，合并   |
+  | =m3u-xlsx=            | src/m3u-xlsx.lisp        | XLSX 读写，多 Sheet 支持            |
+  | =m3u-check=           | src/m3u-check.lisp       | 并发存活检测，raw socket HTTP 检查   |
+  | =m3u-scan=            | src/m3u-scan.lisp        | IP 地址段扫描引擎                   |
+  | =m3u-fingerprint=     | src/m3u-fingerprint.lisp | ffprobe 流信息提取 (实验性)          |
+  | =m3u-server=          | src/m3u-server.lisp      | HTTP/HTTPS 播放服务器               |
+
+* 许可
+
+  GPLv3
