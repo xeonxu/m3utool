@@ -44,9 +44,14 @@
                                                  :timeout timeout
                                                  :element-type '(unsigned-byte 8)))
                  (stream (usocket:socket-stream socket))
-                 (request (format nil
-                                  "GET ~a HTTP/1.0\r\nHost: ~a\r\nUser-Agent: m3utool\r\nConnection: close\r\n\r\n"
-                                  path host))
+                 (crlf (format nil "~c~c" (code-char 13) (code-char 10)))
+                 (request (concatenate 'string
+                           "GET " path " HTTP/1.1" crlf
+                           "Host: " host crlf
+                           "User-Agent: m3utool" crlf
+                           "Accept: */*" crlf
+                           "Connection: close" crlf
+                           crlf))
                  (alive nil)
                  (buf (make-array 65536 :element-type '(unsigned-byte 8)))
                  (total 0))
